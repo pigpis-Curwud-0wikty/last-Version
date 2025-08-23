@@ -5,6 +5,8 @@ import { Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Add from "./pages/Add";
 import List from "./pages/List";
+import ProductList from "./pages/ProductList";
+import DiscountManager from "./pages/DiscountManager";
 import Orders from "./pages/Orders";
 import Collections from "./pages/Category";
 import Settings from "./pages/Settings";
@@ -43,6 +45,8 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard token={token} />} />
                 <Route path="/add" element={<Add token={token} />} />
+                <Route path="/products" element={<ProductList token={token} />} />
+                <Route path="/discounts" element={<DiscountManager token={token} />} />
                 <Route path="/sub-category" element={<List token={token} />} />
                 <Route
                   path="/collections"

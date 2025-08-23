@@ -7,6 +7,7 @@ import collection_icon from './collection_icon.svg'
 import dashboard_icon from './dashboard.svg'
 import settings_icon from './settings.svg'
 import users_icon from './users.svg'
+import discount_icon from './discount_icon.svg'
 
 export const assets = {
     logo,
@@ -17,6 +18,7 @@ export const assets = {
     collection_icon,
     dashboard_icon,
     settings_icon,
-    users_icon
+    users_icon,
+    discount_icon
 }
 
