@@ -9,9 +9,8 @@ const ListCategory = ({
   categories,
   setCategories,
   setActiveTab,
-  handleEditCategory,
   setParentCategoryId,
-  fetchCategories: parentFetchCategories, // optional fetch from parent
+  handleEditCategory,
 }) => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -43,7 +42,13 @@ const ListCategory = ({
       const normalized = cats.map((cat) => {
         const mainImage =
           cat.images?.find((i) => i.isMain) || cat.images?.[0] || null;
-        return { ...cat, mainImage };
+
+        // لو السيرفر رجع isDeleted=true لازم نخليه يظهر كده
+        return {
+          ...cat,
+          mainImage,
+          wasDeleted: cat.isDeleted || false, // يبقى عندنا flag دائم إن الكاتيجوري اتشالت قبل كده
+        };
       });
 
       setCategories(normalized);
@@ -59,22 +64,38 @@ const ListCategory = ({
   }, [token, search, isActive, isDeleted, page]);
 
   // ✅ Delete
+  // ✅ Delete
   const removeCategory = async (id) => {
-    if (!id) return;
-    setDeleteLoading(true);
     try {
-      const res = await axios.delete(`${backendUrl}/api/categories/${id}`, {
+      setDeleteLoading(true); // Start loading
+
+      await axios.delete(`${backendUrl}/api/categories/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.data?.statuscode === 200) toast.success("Category deleted ✅");
-      else toast.error(res.data?.responseBody?.message || "Delete failed");
-      setDeleteId(null);
-      fetchCategories();
-    } catch (err) {
-      console.error(err);
-      toast.error("Delete failed");
+
+      // ✅ Update state locally instead of full fetch
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.id === id ? { ...cat, isDeleted: true, wasDeleted: true } : cat
+        )
+      );
+
+      toast.success("Category deleted successfully");
+    } catch (error) {
+      const errData = error.response?.data;
+      if (errData?.responseBody?.message?.includes("already deleted")) {
+        setCategories((prev) =>
+          prev.map((cat) =>
+            cat.id === id ? { ...cat, isDeleted: true, wasDeleted: true } : cat
+          )
+        );
+        toast.info("Category was already deleted");
+      } else {
+        toast.error("Failed to delete category");
+      }
     } finally {
-      setDeleteLoading(false);
+      setDeleteLoading(false); // ✅ Reset loading
+      setDeleteId(null); // ✅ Close modal
     }
   };
 
@@ -84,14 +105,11 @@ const ListCategory = ({
     try {
       await axios.patch(
         `${backendUrl}/api/categories/${cat.id}/activate`,
-        {}, // body
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { isActive: true }, // ✨ مهم
-        }
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Category activated ✅");
-      fetchCategories();
+      fetchCategories(); // ⬅️ هنا نعمل refresh من السيرفر
     } catch (err) {
       console.error("Activation failed:", err.response?.data || err);
       toast.error(err.response?.data?.message || "Activation failed");
@@ -118,7 +136,7 @@ const ListCategory = ({
 
   const restoreCategory = async (id) => {
     try {
-      await axios.put(
+      await axios.patch(
         `${backendUrl}/api/categories/${id}/restore`,
         {},
         {
@@ -126,7 +144,13 @@ const ListCategory = ({
         }
       );
       toast.success("Category restored ✅");
-      fetchCategories();
+
+      // Update the category locally to keep track that it was once deleted
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.id === id ? { ...cat, isDeleted: false, wasDeleted: true } : cat
+        )
+      );
     } catch (err) {
       console.error("Restore failed:", err);
       toast.error("Restore failed");
@@ -138,7 +162,7 @@ const ListCategory = ({
       <h2 className="text-xl font-bold mb-4">Categories List</h2>
 
       <button
-        onClick={() => setActiveTab("add")}
+        onClick={() => handleEditCategory(null)}
         className="bg-green-500 text-white px-4 py-2 rounded mb-4"
       >
         Add New Category
@@ -192,12 +216,6 @@ const ListCategory = ({
               key={cat.id}
               className="border p-4 rounded-lg shadow-sm hover:shadow-md transition bg-white cursor-pointer"
               onClick={() => {
-                console.log(
-                  "Card clicked, navigating to category:",
-                  cat.id,
-                  cat.isActive,
-                  cat.isDeleted
-                );
                 navigate(
                   `/category/view/${cat.id}?isActive=${cat.isActive ? "true" : "false"}&includeDeleted=${cat.isDeleted ? "true" : "false"}`
                 );
@@ -218,15 +236,29 @@ const ListCategory = ({
               <p className="text-sm text-gray-600 mb-2">
                 {cat.description || "No description"}
               </p>
+              <p />
+              {/* ✅ Status */}
               <p
-                className={`text-xs font-medium mb-1 ${cat.isActive ? "text-green-600" : "text-red-600"}`}
+                className={`text-xs font-medium mb-1 ${
+                  cat.isActive ? "text-green-600" : "text-red-600"
+                }`}
               >
                 {cat.isActive ? "Active ✅" : "Inactive ❌"}
               </p>
               <p
-                className={`text-xs font-medium mb-3 ${cat.isDeleted ? "text-gray-500" : "text-blue-600"}`}
+                className={`text-xs font-medium mb-3 ${
+                  cat.isDeleted
+                    ? "text-gray-500"
+                    : cat.wasDeleted
+                      ? "text-orange-500"
+                      : "text-blue-600"
+                }`}
               >
-                {cat.isDeleted ? "Deleted 🗑️" : "Not Deleted"}
+                {cat.isDeleted
+                  ? "Deleted 🗑️"
+                  : cat.wasDeleted
+                    ? "Was Deleted 🗑️"
+                    : "Not Deleted"}
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -239,15 +271,30 @@ const ListCategory = ({
                 >
                   Edit
                 </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(cat.id);
-                  }}
-                  className="bg-red-500 text-white px-3 py-1 rounded"
-                >
-                  Delete
-                </button>
+
+                {/* ✅ شرط: إذا الكاتيجوري محذوفة، لا تظهر زر Delete بل Restore */}
+                {!cat.isDeleted ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(cat.id);
+                    }}
+                    className="bg-red-500 text-white px-3 py-1 rounded"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      restoreCategory(cat.id);
+                    }}
+                    className="bg-green-500 text-white px-3 py-1 rounded"
+                  >
+                    Restore
+                  </button>
+                )}
+
                 {cat.isActive ? (
                   <button
                     onClick={(e) => {
@@ -269,17 +316,6 @@ const ListCategory = ({
                     Activate
                   </button>
                 )}
-                {cat.isDeleted && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      restoreCategory(cat.id);
-                    }}
-                    className="bg-green-500 text-white px-3 py-1 rounded"
-                  >
-                    Restore
-                  </button>
-                )}
 
                 <button
                   onClick={(e) => {
@@ -294,12 +330,6 @@ const ListCategory = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    console.log(
-                      "Navigating to category:",
-                      cat.id,
-                      cat.isActive,
-                      cat.isDeleted
-                    );
                     navigate(
                       `/category/view/${cat.id}?isActive=${cat.isActive ? "true" : "false"}&includeDeleted=${cat.isDeleted ? "true" : "false"}`
                     );

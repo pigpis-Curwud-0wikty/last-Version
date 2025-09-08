@@ -1,6 +1,22 @@
 import axios from "axios";
 import { backendUrl } from "../App";
 
+// util function عشان تطبع كل تفاصيل الـ error
+const logApiError = (error, context = "") => {
+  if (error.response) {
+    console.error(`❌ API Error in ${context}:`, {
+      status: error.response.status,
+      statusText: error.response.statusText,
+      headers: error.response.headers,
+      data: error.response.data,
+    });
+  } else if (error.request) {
+    console.error(`❌ No response received in ${context}:`, error.request);
+  } else {
+    console.error(`❌ Unexpected error in ${context}:`, error.message);
+  }
+};
+
 // API service for products, discounts, bulk discounts, and images
 const API = {
   // Product APIs
@@ -28,18 +44,173 @@ const API = {
     },
 
     // Get product list with advanced search
-    list: async (params, token) => {
-      // eslint-disable-next-line no-useless-catch
+    list: async ({ page = 1, pageSize = 10, ...filters }, token) => {
       try {
+        // Check if we should use the advanced search endpoint
+        const useAdvancedSearch =
+          filters.subcategoryId ||
+          filters.gender ||
+          filters.fitType ||
+          filters.minPrice ||
+          filters.maxPrice ||
+          filters.inStock ||
+          filters.onSale ||
+          filters.color ||
+          filters.minSize ||
+          filters.maxSize ||
+          filters.sortBy;
+
+        if (useAdvancedSearch) {
+          // Use the advanced search endpoint
+          const queryParams = new URLSearchParams();
+          queryParams.append("page", page);
+          queryParams.append("pageSize", pageSize);
+
+          if (filters.isActive !== undefined) {
+            queryParams.append("isActive", filters.isActive);
+          }
+
+          if (filters.includeDeleted) {
+            queryParams.append("includeDeleted", filters.includeDeleted);
+          }
+
+          // Prepare request body for advanced search
+          const requestBody = {
+            searchTerm: filters.searchTerm || "",
+            subcategoryid: filters.subcategoryId
+              ? parseInt(filters.subcategoryId)
+              : 0,
+            gender: filters.gender ? parseInt(filters.gender) : 0, // 0=None, 1=Men, 2=Women, 3=Both
+            fitType: filters.fitType ? parseInt(filters.fitType) : 0,
+            minPrice: filters.minPrice ? parseFloat(filters.minPrice) : 0,
+            maxPrice: filters.maxPrice ? parseFloat(filters.maxPrice) : 0,
+            inStock: filters.inStock || false,
+            onSale: filters.onSale || false,
+            sortBy: filters.sortBy || "price",
+            sortDescending:
+              filters.sortDescending !== undefined
+                ? filters.sortDescending
+                : true,
+            color: filters.color || "",
+            minSize: filters.minSize ? parseInt(filters.minSize) : 0,
+            maxSize: filters.maxSize ? parseInt(filters.maxSize) : 0,
+            page: page,
+            pageSize: pageSize
+          };
+
+          try {
+            const response = await axios.post(
+              `${backendUrl}/api/Products/advanced-search?${queryParams.toString()}`,
+              requestBody,
+              {
+                headers: {
+                  "Content-Type": "application/json", // ✅ التغيير هنا
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+
+            return response.data;
+          } catch (error) {
+            if (error.response?.status === 404) {
+              console.warn("⚠️ لا توجد منتجات مطابقة للبحث");
+              return { data: [], totalCount: 0 }; // ✅ عشان الكود ما يبوظش
+            }
+            throw error;
+          }
+        }
+
+        // If not using advanced search, use the regular list endpoint
+        const params = new URLSearchParams();
+        params.append("page", page);
+        params.append("pageSize", pageSize);
+
+        // Parse enhanced search term to extract price, fit type, and status information
+        let basicSearchTerm = filters.searchTerm || "";
+        let extractedFilters = {};
+
+        // Extract price range pattern: price(min:X-max:Y)
+        const pricePattern =
+          /price\(min:(\d+)(?:-max:(\d+))?\)|price\(max:(\d+)\)/;
+        const priceMatch = basicSearchTerm.match(pricePattern);
+        if (priceMatch) {
+          if (priceMatch[1])
+            extractedFilters.minPrice = parseInt(priceMatch[1]);
+          if (priceMatch[2])
+            extractedFilters.maxPrice = parseInt(priceMatch[2]);
+          if (priceMatch[3])
+            extractedFilters.maxPrice = parseInt(priceMatch[3]);
+          basicSearchTerm = basicSearchTerm.replace(pricePattern, "").trim();
+        }
+
+        // Extract fit type pattern: fit:X
+        const fitPattern = /fit:(\S+)/;
+        const fitMatch = basicSearchTerm.match(fitPattern);
+        if (fitMatch) {
+          extractedFilters.fitType = fitMatch[1];
+          basicSearchTerm = basicSearchTerm.replace(fitPattern, "").trim();
+        }
+
+        // Extract status pattern: status:active or status:inactive
+        const statusPattern = /status:(active|inactive)/;
+        const statusMatch = basicSearchTerm.match(statusPattern);
+        if (statusMatch) {
+          extractedFilters.isActive = statusMatch[1] === "active";
+          basicSearchTerm = basicSearchTerm.replace(statusPattern, "").trim();
+        }
+
+        // Set the cleaned search term
+        params.append("searchTerm", basicSearchTerm);
+
+        // Add extracted filters with priority over original filters
+        const mergedFilters = { ...filters, ...extractedFilters };
+
+        // Add filter parameters if they exist
+        if (mergedFilters.isActive !== null)
+          params.append("isActive", mergedFilters.isActive);
+        if (mergedFilters.includeDeleted)
+          params.append("includeDeleted", mergedFilters.includeDeleted);
+        if (mergedFilters.subcategoryId)
+          params.append("subcategoryId", mergedFilters.subcategoryId);
+        if (mergedFilters.gender) params.append("gender", mergedFilters.gender);
+        if (mergedFilters.fitType)
+          params.append("fitType", mergedFilters.fitType);
+        if (mergedFilters.minPrice)
+          params.append("minPrice", mergedFilters.minPrice);
+        if (mergedFilters.maxPrice)
+          params.append("maxPrice", mergedFilters.maxPrice);
+        if (mergedFilters.inStock)
+          params.append("inStock", mergedFilters.inStock);
+        if (mergedFilters.onSale) params.append("onSale", mergedFilters.onSale);
+        if (mergedFilters.sortBy) params.append("sortBy", mergedFilters.sortBy);
+        if (mergedFilters.sortDescending !== undefined)
+          params.append("sortDescending", mergedFilters.sortDescending);
+        if (mergedFilters.color) params.append("color", mergedFilters.color);
+        if (mergedFilters.minSize)
+          params.append("minSize", mergedFilters.minSize);
+        if (mergedFilters.maxSize)
+          params.append("maxSize", mergedFilters.maxSize);
+
         const response = await axios.get(
-          `${backendUrl}/api/Products/advanced-search`,
+          `${backendUrl}/api/Products?${params.toString()}`,
           {
-            params,
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           }
         );
+
         return response.data;
       } catch (error) {
+        console.error("❌ Error fetching products:");
+        if (error.response) {
+          console.error("Status:", error.response.status);
+          console.error("Data:", error.response.data);
+        } else if (error.request) {
+          console.error("No response received:", error.request);
+        } else {
+          console.error("Request error:", error.message);
+        }
         throw error;
       }
     },
@@ -65,7 +236,7 @@ const API = {
         const response = await axios.put(
           `${backendUrl}/api/products/${productId}`,
           productData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json-patch+json", Accept: "text/plain" } }
         );
         return response.data;
       } catch (error) {
@@ -74,45 +245,102 @@ const API = {
     },
 
     // Delete a product
-    delete: async (productId, token) => {
-      // eslint-disable-next-line no-useless-catch
+    delete: async (id, token) => {
       try {
         const response = await axios.delete(
-          `${backendUrl}/api/products/${productId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          `${backendUrl}/api/Products/${id}`, // ✅ Products بحرف P كبير
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
         return response.data;
       } catch (error) {
-        throw error;
+        console.error(
+          "Error deleting product:",
+          error.response?.data || error.message
+        );
+
+        // نرمي Error فيه تفاصيل مفهومة
+        throw {
+          statuscode: error.response?.status || 500,
+          responseBody: error.response?.data || {
+            message: "Failed to delete product",
+          },
+        };
       }
     },
 
     // Activate a product
-    activate: async (productId, token) => {
-      // eslint-disable-next-line no-useless-catch
+    activate: async (id, token) => {
+      return await axios.patch(
+        `${backendUrl}/api/Products/${id}/activate`,
+        null, // مهم! لازم تبعته null مش {}
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+    },
+
+    deactivate: async (id, token) => {
+      return await axios.patch(
+        `${backendUrl}/api/Products/${id}/deactivate`,
+        null, // نفس الفكرة هنا
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+    },
+
+    restore: async (id, token) => {
+      return await axios.patch(
+        `${backendUrl}/api/Products/${id}/restore`,
+        null,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    },
+
+    // Get discount information for a product
+    getDiscount: async (productId, token) => {
       try {
-        const response = await axios.post(
-          `${backendUrl}/api/products/${productId}/activate`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
+        const response = await axios.get(
+          `${backendUrl}/api/Products/${productId}/Discount`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "text/plain", // Match API response format
+            },
+          }
         );
         return response.data;
       } catch (error) {
+        console.error(
+          "❌ Error fetching product discount:",
+          error.response?.data || error
+        );
         throw error;
       }
     },
 
-    // Deactivate a product
-    deactivate: async (productId, token) => {
-      // eslint-disable-next-line no-useless-catch
+    // Apply discount to a product
+    applyDiscount: async (productId, discountId, token) => {
       try {
         const response = await axios.post(
-          `${backendUrl}/api/products/${productId}/deactivate`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
+          `${backendUrl}/api/Products/${productId}/Discount`,
+          discountId, // Send the discount ID directly as the request body
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json-patch+json", // Updated content type to match API requirements
+              Accept: "text/plain", // Updated accept header to match API response
+            },
+          }
         );
         return response.data;
       } catch (error) {
+        console.error(
+          "❌ Error applying discount:",
+          error.response?.data || error
+        );
         throw error;
       }
     },
@@ -123,35 +351,39 @@ const API = {
       const res = await axios.get(`${backendUrl}/api/subcategories`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return res.data; // هيبقى Array of subcategories
+
+      // ✅ رجّع الـ array مباشرة
+      return res.data?.responseBody?.data || [];
     },
   },
 
   // Image APIs
   images: {
-    // Upload main image for a product
-    uploadMain: async (productId, file, token) => {
+    // ✅ Upload main image for a product
+    uploadMain: async (productId, imageFile, token) => {
       const formData = new FormData();
-      formData.append("Files", file); // أو "image" حسب Swagger
+      formData.append("Files", imageFile);
 
       try {
         const res = await axios.post(
-          `${backendUrl}/api/products/${productId}/main-image`, // مثال فقط
+          `${backendUrl}/api/Products/${productId}/main-image`,
           formData,
           {
             headers: {
+              "Content-Type": "multipart/form-data",
               Authorization: `Bearer ${token}`,
-              // لا تحدد Content-Type هنا
             },
           }
         );
+
+        console.log("✅ Main image uploaded successfully:", res.data);
         return res.data;
       } catch (err) {
         console.error(
           "❌ Error uploading main image:",
           err.response?.data || err
         );
-        throw err;
+        throw err.response?.data || err;
       }
     },
 
@@ -159,12 +391,12 @@ const API = {
     uploadAdditional: async (productId, imageFiles, token) => {
       const formData = new FormData();
       imageFiles.forEach((file) => {
-        formData.append("Files", file);
+        formData.append("images", file);
       });
 
       try {
         const res = await axios.post(
-          `${backendUrl}/Products/${productId}/images`,
+          `${backendUrl}/api/Products/${productId}/images`,
           formData,
           {
             headers: {
@@ -202,60 +434,360 @@ const API = {
 
   // Discount APIs
   discounts: {
-    // Create a discount for a product
-    create: async (productId, discountData, token) => {
-      // eslint-disable-next-line no-useless-catch
+    // Create a discount
+    create: async (discountData, token) => {
       try {
         const response = await axios.post(
-          `${backendUrl}/api/Products/${productId}/discount`,
+          `${backendUrl}/api/Discount`,
           discountData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
         );
         return response.data;
       } catch (error) {
+        console.error(
+          "❌ Error creating discount:",
+          error.response?.data || error
+        );
         throw error;
       }
     },
 
-    // Get discounts for a product
-    getByProductId: async (productId, token) => {
-      // eslint-disable-next-line no-useless-catch
+    // Apply bulk discount to multiple products
+    applyBulkDiscount: async (discountId, productIds, token) => {
       try {
-        const response = await axios.get(
-          `${backendUrl}/api/Products/${productId}/discount`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const response = await axios.post(
+          `${backendUrl}/api/Products/bulk/Discount`,
+          {
+            discountid: discountId,
+            productsId: productIds,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json-patch+json",
+              Accept: "text/plain",
+            },
+          }
         );
         return response.data;
       } catch (error) {
+        console.error(
+          "❌ Error applying bulk discount:",
+          error.response?.data || error
+        );
         throw error;
       }
     },
 
-    // Update a discount
-    update: async (productId, discountId, discountData, token) => {
-      // eslint-disable-next-line no-useless-catch
+    // Associate products with a discount (apply to each product)
+    associateProducts: async (discountId, productIds, token) => {
       try {
-        const response = await axios.put(
-          `${backendUrl}/api/Products/${productId}/discount/${discountId}`,
-          discountData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const results = [];
+        for (const productId of productIds) {
+          try {
+            const res = await axios.post(
+              `${backendUrl}/api/Product/${productId}/Discount`,
+              Number(discountId),
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+              }
+            );
+            results.push({ productId, ok: true, data: res.data });
+          } catch (err) {
+            console.error(
+              `❌ Failed to associate product ${productId}:`,
+              err.response?.data || err
+            );
+            results.push({
+              productId,
+              ok: false,
+              error: err.response?.data || err.message,
+            });
+          }
+        }
+        return { responseBody: { data: results } };
       } catch (error) {
+        console.error(
+          "❌ Error associating products with discount:",
+          error.response?.data || error
+        );
         throw error;
       }
     },
 
     // Delete a discount
-    delete: async (productId, discountId, token) => {
-      // eslint-disable-next-line no-useless-catch
+    delete: async (discountId, token) => {
       try {
         const response = await axios.delete(
-          `${backendUrl}/api/Products/${productId}/discount/${discountId}`,
+          `${backendUrl}/api/Discount/${discountId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error deleting discount:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // Activate a discount
+    activate: async (discountId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Discount/${discountId}/activate`,
+          {},
           { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;
       } catch (error) {
+        console.error(
+          "❌ Error activating discount:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // Deactivate a discount
+    deactivate: async (discountId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Discount/${discountId}/deactivate`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error deactivating discount:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // Restore a deleted discount
+    restore: async (discountId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Discount/${discountId}/restore`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error restoring discount:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // Calculate discount amount
+    calculate: async (discountId, originalPrice, token) => {
+      try {
+        const response = await axios.get(
+          `${backendUrl}/api/Discount/${discountId}/calculate`,
+          {
+            params: { originalPrice },
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error calculating discount:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // List all discounts
+    list: async (params, token) => {
+      try {
+        const response = await axios.get(`${backendUrl}/api/Discount`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: params,
+        });
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error fetching discounts:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // Get discount by ID
+    getById: async (discountId, token) => {
+      try {
+        const response = await axios.get(
+          `${backendUrl}/api/Discount/${discountId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "❌ Error fetching discount details:",
+          error.response?.data || error
+        );
+        throw error;
+      }
+    },
+
+    // This function has been moved to the products section for better organization
+    // and updated to match the API requirements
+  },
+
+  // Product Variants APIs
+  variants: {
+    // Add a variant to a product
+    add: async (productId, variantData, token) => {
+      try {
+        const response = await axios.post(
+          `${backendUrl}/api/Products/${productId}/Variants`,
+          variantData,
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json-patch+json", Accept: "text/plain" } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "adding product variant");
+        throw error;
+      }
+    },
+
+    // Get variants for a product
+    getByProductId: async (productId, token) => {
+      try {
+        const response = await axios.get(
+          `${backendUrl}/api/Products/${productId}/Variants`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "getting product variants");
+        throw error;
+      }
+    },
+
+    // Add quantity to a variant
+    addQuantity: async (productId, variantId, quantity, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}/quantity/add?quantity=${quantity}`,
+          null,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "adding variant quantity");
+        throw error;
+      }
+    },
+
+    // ✅ Remove quantity from variant
+    removeQuantity: async (productId, variantId, quantity, token) => {
+      try {
+        const res = await axios.patch(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}/quantity/remove`,
+          null, // مفيش body, كله params
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "text/plain", // 👈 مهم حسب Swagger
+            },
+            params: { quantity }, // الكمية في query string
+          }
+        );
+
+        return res.data;
+      } catch (error) {
+        console.error("❌ API Error in removing variant quantity:", {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+        });
+        throw error;
+      }
+    },
+
+    // Activate a variant
+    activate: async (productId, variantId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}/activate`,
+          null,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "activating variant");
+        throw error;
+      }
+    },
+
+    // Deactivate a variant
+    deactivate: async (productId, variantId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}/deactivate`,
+          null,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "deactivating variant");
+        throw error;
+      }
+    },
+
+    // Restore a variant
+    restore: async (productId, variantId, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}/restore`,
+          null,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "restoring variant");
+        throw error;
+      }
+    },
+
+    // Delete a variant
+    delete: async (productId, variantId, token) => {
+      try {
+        const response = await axios.delete(
+          `${backendUrl}/api/Products/${productId}/Variants/${variantId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        console.error("❌ API Error while deleting variant:");
+        console.error("Status:", error.response?.status);
+        console.error("Message:", error.response?.data?.message);
+        console.error("Errors:", error.response?.data?.errors);
+        console.error("Full Error Object:", error.response?.data || error);
         throw error;
       }
     },

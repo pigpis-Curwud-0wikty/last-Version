@@ -15,8 +15,6 @@ const Login = ({ setToken }) => {
         { email, password }
       );
 
-      console.log("Full API Response:", response.data);
-
       const statusCode = response.data.statuscode;
       const body = response.data.responseBody;
 

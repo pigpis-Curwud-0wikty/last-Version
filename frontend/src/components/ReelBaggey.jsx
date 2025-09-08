@@ -55,6 +55,7 @@ const ReelBaggey = () => {
                                     id={product._id}
                                     name={product.name}
                                     price={product.price}
+                                    finalPrice={product.finalPrice}
                                     image={product.image}
                                 />
                             </motion.div>

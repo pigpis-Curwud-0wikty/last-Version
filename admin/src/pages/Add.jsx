@@ -1,117 +1,198 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import API from "../services/api";
+import ProductForm from "../components/form/ProductForm";
 
 const Add = ({ token }) => {
   const navigate = useNavigate();
-  const [mainImage, setMainImage] = useState(null);
-  const [additionalImages, setAdditionalImages] = useState([]);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [subcategoryid, setSubcategoryid] = useState("");
-  const [fitType, setFitType] = useState("");
-  const [gender, setGender] = useState("");
-  const [price, setPrice] = useState("");
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const editId = searchParams.get("edit");
   const [loading, setLoading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  
+  // Form data state
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    subcategoryid: "",
+    fitType: "",
+    gender: "",
+    price: "",
+    mainImage: null,
+    additionalImages: [],
+    isActive: true,
+    inStock: true,
+    onSale: false,
+    color: "",
+    size: "",
+    quantity: "",
+    material: "",
+    careInstructions: "",
+    shippingInfo: ""
+  });
 
-  // ✅ Store subcategories fetched from API
+  // Store subcategories fetched from API
   const [subcategories, setSubcategories] = useState([]);
 
-  // ✅ Fit Types (static list)
+  // Fit Types (static list)
   const fitTypes = [
     { id: 1, name: "Slim" },
     { id: 2, name: "Regular" },
     { id: 3, name: "Oversized" },
   ];
 
-  // Handle main image preview
-  useEffect(() => {
-    if (mainImage) {
-      const objectUrl = URL.createObjectURL(mainImage);
-      setPreviewUrl(objectUrl);
-      return () => URL.revokeObjectURL(objectUrl);
-    }
-  }, [mainImage]);
-
-  // ✅ Fetch subcategories on mount
+  // Fetch subcategories on mount
   useEffect(() => {
     const fetchSubcategories = async () => {
       try {
-        const res = await API.subcategories.getAll(token);
-        console.log("📦 Subcategories response:", res);
-        setSubcategories(res.data); // ✅ استخدم الـ array من داخل res
+        const subs = await API.subcategories.getAll(token);
+        console.log("📦 Subcategories response:", subs);
+        setSubcategories(subs);
       } catch (err) {
         console.error("❌ Failed to fetch subcategories:", err);
+        toast.error("Failed to load subcategories");
       }
     };
 
     fetchSubcategories();
   }, [token]);
+  
+  // Prefill form when editing
+  useEffect(() => {
+    const loadForEdit = async () => {
+      if (!editId) return;
+      try {
+        const res = await API.products.getById(editId, token);
+        const p = res?.responseBody?.data;
+        if (!p) return;
+        setFormData((prev) => ({
+          ...prev,
+          name: p.name || "",
+          description: p.description || "",
+          subcategoryid: p.subCategoryId || p.subcategoryid || "",
+          fitType: p.fitType?.toString() || "",
+          gender: p.gender?.toString() || "",
+          price: p.price?.toString() || "",
+          isActive: p.isActive ?? true,
+          // keep images fields empty; edits won't re-upload unless changed
+        }));
+      } catch (e) {
+        console.error("Failed to load product for edit", e);
+        toast.error("Failed to load product for update");
+      }
+    };
+    loadForEdit();
+  }, [editId, token]);
+
+  // Handle input changes
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value
+    }));
+  };
+  
+  // Handle file changes
+  const handleFileChange = (fieldName, files) => {
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: files
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // 1. Extract product data
       const productData = {
-        name,
-        description,
-        subcategoryid: Number(subcategoryid),
-        fitType: Number(fitType),
-        gender: Number(gender),
-        price: Number(price),
+        name: formData.name,
+        description: formData.description,
+        subcategoryid: Number(formData.subcategoryid),
+        fitType: Number(formData.fitType),
+        gender: Number(formData.gender),
+        price: Number(formData.price),
+        color: formData.color,
+        size: formData.size,
+        quantity: formData.quantity ? Number(formData.quantity) : undefined,
+        material: formData.material,
+        careInstructions: formData.careInstructions,
+        shippingInfo: formData.shippingInfo,
+        isActive: formData.isActive,
+        inStock: formData.inStock,
+        onSale: formData.onSale
       };
 
-      console.log(
-        "📤 Product Data Sent:",
-        JSON.stringify(productData, null, 2)
-      );
-
-      // ✅ إنشاء المنتج
-      const productRes = await API.products.create(productData, token);
-
-      // ✅ اطبع الرد كامل عشان نشوف شكله
-      console.log(
-        "📥 Full Product Response:",
-        JSON.stringify(productRes, null, 2)
-      );
-
-      // ✅ نحاول نجيب الـ ID من كل مكان ممكن
-      const newProductId =
-        productRes?.responseBody?.data?.id ||
-        productRes?.data?.id ||
-        productRes?.id;
-
-      if (!newProductId) {
-        throw new Error("❌ Product ID not returned from API.");
+      console.log("📤 Product Data Sent:", JSON.stringify(productData, null, 2));
+      let productId = editId;
+      if (editId) {
+        // Update existing product
+        await API.products.update(editId, productData, token);
+        productId = editId;
+      } else {
+        // 2. Create the product
+        const productRes = await API.products.create(productData, token);
+        console.log("📥 Full Product Response:", productRes);
+        productId = productRes.responseBody?.data?.id;
+        if (!productId) throw new Error("❌ Product ID not returned from API.");
+        console.log("✅ Extracted Product ID:", productId);
       }
 
-      console.log("✅ Extracted Product ID:", newProductId);
+      // 3. Upload main image
+      if (!editId && formData.mainImage) {
+        try {
+          const mainImgRes = await API.images.uploadMain(
+            productId,
+            formData.mainImage,
+            token
+          );
+          console.log("📤 Main image uploaded!", mainImgRes);
 
-      // ✅ رفع الصور
-      if (mainImage) {
-        await API.images.uploadMain(newProductId, mainImage, token);
-        console.log("📤 Main image uploaded!");
+          const imageUrl = mainImgRes.responseBody?.data?.url;
+          if (imageUrl) {
+            console.log("🖼️ Main image URL:", imageUrl);
+          }
+        } catch (err) {
+          console.error("❌ Error uploading main image:", err);
+          toast.warning("⚠️ Product created but main image upload failed");
+        }
       }
 
-      if (additionalImages.length > 0) {
-        await API.images.uploadAdditional(
-          newProductId,
-          additionalImages,
-          token
+      // 4. Upload additional images
+      if (!editId && formData.additionalImages && formData.additionalImages.length > 0) {
+        try {
+          await API.images.uploadAdditional(
+            productId,
+            formData.additionalImages,
+            token
+          );
+          console.log("📤 Additional images uploaded!");
+        } catch (err) {
+          console.error("❌ Error uploading additional images:", err);
+          toast.warning("⚠️ Product created but some additional images failed");
+        }
+      }
+
+      // 5. Success message
+      toast.success(editId ? "✅ Product updated successfully!" : "🎉 Product added successfully!");
+
+      // Ask if user wants to add variants
+      if (!editId) {
+        const addVariants = window.confirm(
+          "Do you want to add variants for this product?"
         );
-        console.log("📤 Additional images uploaded!");
+        if (addVariants) {
+          navigate(`/products/${productId}/variants`);
+          return; // Skip resetForm if navigating away
+        }
       }
 
-      toast.success("✅ Product added successfully!");
       resetForm();
     } catch (err) {
-      console.error(
-        "❌ Error adding product:",
-        err.response?.data || err.message
-      );
+      console.error("❌ Error adding product:", err.response?.data || err.message);
       toast.error(err.response?.data?.message || "Failed to add product");
     } finally {
       setLoading(false);
@@ -123,161 +204,45 @@ const Add = ({ token }) => {
   };
 
   const resetForm = () => {
-    setMainImage(null);
-    setAdditionalImages([]);
-    setPreviewUrl(null);
-    setName("");
-    setDescription("");
-    setSubcategoryid("");
-    setFitType("");
-    setGender("");
-    setPrice("");
+    setFormData({
+      name: "",
+      description: "",
+      subcategoryid: "",
+      fitType: "",
+      gender: "",
+      price: "",
+      mainImage: null,
+      additionalImages: [],
+      isActive: true,
+      inStock: true,
+      onSale: false,
+      color: "",
+      size: "",
+      quantity: "",
+      material: "",
+      careInstructions: "",
+      shippingInfo: ""
+    });
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-3 items-start w-full max-w-md p-4 border rounded-lg bg-white shadow"
-    >
-      <h2 className="text-lg font-semibold">Add Product</h2>
-
-      {/* Main Image Upload */}
-      <div>
-        <p className="mb-2">Upload Main Image</p>
-        <label htmlFor="mainImage" className="cursor-pointer">
-          <div className="w-24 h-24 border-2 border-dashed border-gray-300 flex items-center justify-center">
-            {previewUrl ? (
-              <img
-                className="w-full h-full object-cover"
-                src={previewUrl}
-                alt="Product Preview"
-              />
-            ) : (
-              <span className="text-gray-500 text-xs text-center">
-                Click to upload
-              </span>
-            )}
-          </div>
-        </label>
-        <input
-          type="file"
-          id="mainImage"
-          hidden
-          accept="image/*"
-          onChange={(e) => setMainImage(e.target.files[0])}
-        />
-      </div>
-
-      {/* Additional Images Upload */}
-      <div>
-        <p className="mb-2">Upload Additional Images</p>
-        <label htmlFor="additionalImages" className="cursor-pointer">
-          <div className="w-full h-16 border-2 border-dashed border-gray-300 flex items-center justify-center">
-            <span className="text-gray-500 text-xs">
-              {additionalImages.length > 0
-                ? `${additionalImages.length} images selected`
-                : "Click to upload multiple images"}
-            </span>
-          </div>
-        </label>
-        <input
-          type="file"
-          id="additionalImages"
-          hidden
-          multiple
-          accept="image/*"
-          onChange={(e) => setAdditionalImages(Array.from(e.target.files))}
-        />
-      </div>
-
-      {/* Product Name */}
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Product Name"
-        className="w-full px-3 py-2 border rounded"
-        required
+    <div className="p-4">
+      <h2 className="text-xl font-semibold mb-4">{editId ? "Update Product" : "Add New Product"}</h2>
+      
+      <ProductForm
+        formData={formData}
+        handleInputChange={handleInputChange}
+        handleFileChange={handleFileChange}
+        handleSubmit={handleSubmit}
+        loading={loading}
+        subcategories={subcategories}
+        fitTypes={fitTypes}
+        submitButtonText={editId ? "Update Product" : "Add Product"}
+        loadingButtonText={editId ? "Updating..." : "Adding..."}
+        resetForm={resetForm}
+        previewProducts={handlePreviewProducts}
       />
-
-      {/* Description */}
-      <textarea
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Description"
-        className="w-full px-3 py-2 border rounded"
-        required
-      />
-
-      {/* ✅ Subcategory Select */}
-      <select
-        value={subcategoryid}
-        onChange={(e) => setSubcategoryid(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-        required
-      >
-        <option value="">Select Subcategory</option>
-        {subcategories.map((sub) => (
-          <option key={sub.id} value={sub.id}>
-            {sub.name}
-          </option>
-        ))}
-      </select>
-
-      {/* ✅ Fit Type Select */}
-      <select
-        value={fitType}
-        onChange={(e) => setFitType(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-        required
-      >
-        <option value="">Select Fit Type</option>
-        {fitTypes.map((fit) => (
-          <option key={fit.id} value={fit.id}>
-            {fit.name}
-          </option>
-        ))}
-      </select>
-
-      {/* Gender Select */}
-      <select
-        value={gender}
-        onChange={(e) => setGender(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-        required
-      >
-        <option value="">Select Gender</option>
-        <option value="1">Male</option>
-        <option value="2">Female</option>
-      </select>
-
-      {/* Price */}
-      <input
-        type="number"
-        value={price}
-        onChange={(e) => setPrice(e.target.value)}
-        placeholder="Price"
-        className="w-full px-3 py-2 border rounded"
-        required
-      />
-
-      {/* Buttons */}
-      <div className="flex gap-3 w-full">
-        <button
-          type="submit"
-          disabled={loading}
-          className="flex-1 bg-black text-white py-2 rounded disabled:opacity-50"
-        >
-          {loading ? "Adding..." : "Add Product"}
-        </button>
-        <button
-          type="button"
-          onClick={handlePreviewProducts}
-          className="flex-1 bg-gray-200 text-gray-800 py-2 rounded hover:bg-gray-300"
-        >
-          Preview Products
-        </button>
-      </div>
-    </form>
+    </div>
   );
 };
 

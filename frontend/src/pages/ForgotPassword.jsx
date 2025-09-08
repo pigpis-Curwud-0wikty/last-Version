@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react'
+import { ShopContext } from '../context/ShopContext';
 import { motion } from 'framer-motion';
 
 const ForgotPassword = () => {
+  const {backendUrl} = useContext(ShopContext)
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -13,7 +15,7 @@ const ForgotPassword = () => {
     setSuccess('');
     setLoading(true);
     try {
-      const response = await fetch('/api/account/forgot-password', {
+      const response = await fetch(`${backendUrl}/api/Account/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

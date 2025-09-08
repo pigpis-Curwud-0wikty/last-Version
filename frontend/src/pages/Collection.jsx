@@ -3,175 +3,426 @@ import { ShopContext } from "../context/ShopContext";
 import { assets } from "../assets/frontend_assets/assets";
 import Title from "../components/Title";
 import ProductItem from "../components/ProductItem";
-import { motion } from "framer-motion";
-import { useTranslation } from 'react-i18next';
+import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
+import axios from "axios";
 
 const Collection = () => {
   const { t } = useTranslation();
-  const { products, search } = useContext(ShopContext);
+  const { products, search, backendUrl } = useContext(ShopContext);
+
   const [showFilter, setShowFilter] = useState(false);
   const [filterProducts, setFilterProducts] = useState([]);
+
+  // States for filtering
   const [selectedCategories, setSelectedCategories] = useState([]);
-  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [selectedSubCategories, setSelectedSubCategories] = useState([]);
+  const [selectedGenders, setSelectedGenders] = useState([]);
+  const [selectedFitTypes, setSelectedFitTypes] = useState([]);
+
+  // New filter states
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [inStock, setInStock] = useState(false);
+
+  // States for filter options
+  const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
+  const [genders, setGenders] = useState([]);
+  const [fitTypes, setFitTypes] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [sortOption, setSortOption] = useState("relavent");
 
+  // Fetch filter options from backend
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        // Fetch categories
+        const categoriesResponse = await axios.get(
+          `${backendUrl}/api/categories?isActive=true&includeDeleted=false`
+        );
+        if (categoriesResponse.data.responseBody) {
+          setCategories(categoriesResponse.data.responseBody.data || []);
+        }
+
+        // Fetch subcategories
+        const subCategoriesResponse = await axios.get(
+          `${backendUrl}/api/subcategories?isActive=true&includeDeleted=false`
+        );
+        if (subCategoriesResponse.data.responseBody) {
+          setSubCategories(subCategoriesResponse.data.responseBody.data || []);
+        }
+
+        // For gender and fitType, we would typically fetch from a dedicated endpoint
+        // Since we don't have that, we'll use hardcoded values for now
+        // In a real application, these would come from the backend
+        setGenders([t("MEN"), t("WOMEN"), t("KIDS")]);
+        setFitTypes([t("SLIM"), t("REGULAR"), t("OVERSIZED")]);
+      } catch (err) {
+        console.error("Error fetching filter options:", err);
+        setError("Failed to load filter options. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFilterOptions();
+  }, [backendUrl, t]);
+
+  // Filtering Logic
   useEffect(() => {
     let filtered = products;
+
     if (search) {
       const lowerSearch = search.toLowerCase();
-      filtered = filtered.filter((item) =>
-        item.name.toLowerCase().includes(lowerSearch)
+      filtered = filtered.filter((item) => {
+        // Check if product name matches search
+        const nameMatch = item.name?.toLowerCase().includes(lowerSearch);
+
+        // Check if category name matches search
+        const categoryMatch = item.category
+          ?.toLowerCase()
+          .includes(lowerSearch);
+
+        // Check if subcategory name matches search
+        const subcategoryMatch = item.subCategory
+          ?.toLowerCase()
+          .includes(lowerSearch);
+
+        // Check if description matches search (if available)
+        const descriptionMatch = item.description
+          ?.toLowerCase()
+          .includes(lowerSearch);
+
+        // Return true if any of the fields match the search term
+        return (
+          nameMatch || categoryMatch || subcategoryMatch || descriptionMatch
+        );
+      });
+
+      // If search matches a category name, auto-select that category in the filter
+      const matchingCategories = categories.filter((category) =>
+        category.name.toLowerCase().includes(lowerSearch)
       );
+
+      if (matchingCategories.length > 0 && selectedCategories.length === 0) {
+        // Auto-select matching categories if none are already selected
+        const categoryNames = matchingCategories.map((cat) => cat.name);
+        setSelectedCategories((prevSelected) => {
+          // Only add categories that aren't already selected
+          const newSelected = [...prevSelected];
+          categoryNames.forEach((name) => {
+            if (!newSelected.includes(name)) {
+              newSelected.push(name);
+            }
+          });
+          return newSelected;
+        });
+      }
+
+      // If search matches a subcategory name, auto-select that subcategory in the filter
+      const matchingSubcategories = subCategories.filter((subCategory) =>
+        subCategory.name.toLowerCase().includes(lowerSearch)
+      );
+
+      if (
+        matchingSubcategories.length > 0 &&
+        selectedSubCategories.length === 0
+      ) {
+        // Auto-select matching subcategories if none are already selected
+        const subcategoryNames = matchingSubcategories.map(
+          (subCat) => subCat.name
+        );
+        setSelectedSubCategories((prevSelected) => {
+          // Only add subcategories that aren't already selected
+          const newSelected = [...prevSelected];
+          subcategoryNames.forEach((name) => {
+            if (!newSelected.includes(name)) {
+              newSelected.push(name);
+            }
+          });
+          return newSelected;
+        });
+      }
     }
+
     if (selectedCategories.length > 0) {
       filtered = filtered.filter((item) =>
         selectedCategories.includes(item.category)
       );
     }
-    if (selectedTypes.length > 0) {
+
+    if (selectedSubCategories.length > 0) {
       filtered = filtered.filter((item) =>
-        selectedTypes.includes(item.subCategory)
+        selectedSubCategories.includes(item.subCategory)
       );
     }
-    if (sortOption === "low-high") {
-      filtered = [...filtered].sort((a, b) => a.price - b.price);
-    } else if (sortOption === "high-low") {
-      filtered = [...filtered].sort((a, b) => b.price - a.price);
+
+    if (selectedGenders.length > 0) {
+      filtered = filtered.filter((item) =>
+        selectedGenders.includes(item.gender)
+      );
     }
+
+    if (selectedFitTypes.length > 0) {
+      filtered = filtered.filter((item) =>
+        selectedFitTypes.includes(item.fitType)
+      );
+    }
+
+    // Apply price range filter
+    if (minPrice) {
+      filtered = filtered.filter(
+        (item) => Number(item.price) >= Number(minPrice)
+      );
+    }
+
+    if (maxPrice) {
+      filtered = filtered.filter(
+        (item) => Number(item.price) <= Number(maxPrice)
+      );
+    }
+
+    // Apply in-stock filter
+    if (inStock) {
+      filtered = filtered.filter((item) => item.inStock);
+    }
+
+    // Apply sorting
+    if (sortOption === "low-high" || sortOption === "price-low-high") {
+      filtered = [...filtered].sort((a, b) => a.price - b.price);
+    } else if (sortOption === "high-low" || sortOption === "price-high-low") {
+      filtered = [...filtered].sort((a, b) => b.price - a.price);
+    } else if (sortOption === "az") {
+      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortOption === "za") {
+      filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name));
+    } else if (sortOption === "date-old-new") {
+      filtered = [...filtered].sort((a, b) => a.date - b.date);
+    } else if (sortOption === "date-new-old") {
+      filtered = [...filtered].sort((a, b) => b.date - a.date);
+    }
+
     setFilterProducts(filtered);
-  }, [search, selectedCategories, selectedTypes, sortOption, products]);
-
-  const handleCategoryChange = (e) => {
-    const value = e.target.value;
-    setSelectedCategories((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
-    );
-  };
-
-  const handleTypeChange = (e) => {
-    const value = e.target.value;
-    setSelectedTypes((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
-    );
-  };
-
-  // Animation variants for sections only
-  const sectionFade = {
-    hidden: { opacity: 0, y: 40 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: "easeOut" } },
-  };
+  }, [
+    search,
+    selectedCategories,
+    selectedSubCategories,
+    selectedGenders,
+    selectedFitTypes,
+    sortOption,
+    products,
+    categories,
+    subCategories,
+    minPrice,
+    maxPrice,
+    inStock,
+  ]);
 
   return (
-    <div className="mt-[80px] mb-5">
-      <div className="flex flex-col lg:flex-row gap-1 lg:gap-10 pt-10 border-t border-gray-300 overflow-hidden px-4 sm:px-[5vw] md:px-[7vw] lg:px-[9vw]">
-        {/* Filter Section */}
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.3 }}
-          variants={sectionFade}
-          className="min-w-60">
-          <p
-            onClick={() => setShowFilter(!showFilter)}
-            className="my-2 text-xl flex items-center cursor-pointer gap-2"
-          >
-            {t('FILTERS')}
-            <img
-              className={`h-3 lg:hidden ${showFilter ? "rotate-90" : ""}`}
-              src={assets.dropdown_icon}
-              alt=""
-            />
-          </p>
-          {/* Category Filters */}
-          <div
-            className={`border border-gray-300 pl-5 py-3 mt-6 ${
-              showFilter ? "" : "hidden lg:block"
-            }`}
-          >
-            <p className="mb-3 text-sm font-medium">{t('CATEGORIES')}</p>
-            <div className="flex flex-col gap-2 text-sm font-light text-gray-700">
-              {[t('T_SHIRTS'), t('JACKETS'), t('DENIM'), t('CARGOS')].map((cat) => (
-                <label key={cat} className="flex gap-2 items-center">
-                  <input
-                    className="w-3"
-                    type="checkbox"
-                    value={cat}
-                    onChange={handleCategoryChange}
-                  />
-                  {cat}
-                </label>
-              ))}
-            </div>
-          </div>
-          {/* Type/Subcategory Filters */}
-          <div
-            className={`border border-gray-300 pl-5 py-3 mt-6 ${
-              showFilter ? "" : "hidden lg:block"
-            }`}
-          >
-            <p className="mb-3 text-sm font-medium">{t('TYPE')}</p>
-            <div className="flex flex-col gap-2 text-sm font-light text-gray-700">
-              {[t('MEN'), t('WOMEN'), t('KIDS')].map((type) => (
-                <label key={type} className="flex gap-2 items-center">
-                  <input
-                    className="w-3"
-                    type="checkbox"
-                    value={type}
-                    onChange={handleTypeChange}
-                  />
-                  {type}
-                </label>
-              ))}
-            </div>
-          </div>
-        </motion.div>
+    <motion.div
+      className="max-w-screen-2xl mx-auto px-4 py-8 mt-20"
+      initial={{ opacity: 0, y: 40 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, ease: "easeOut" }}
+    >
+      {/* Breadcrumbs */}
+      <div className="text-xs text-gray-500 mb-4 flex gap-2">
+        <Link to="/" className="hover:underline">
+          Home
+        </Link>{" "}
+        /
+        <Link to="/collection" className="hover:underline">
+          Shop
+        </Link>{" "}
+        /<span className="text-black">{t("PRODUCTS")}</span>
+      </div>
 
-        {/* Product Section */}
-        <div className="flex-1">
-          {/* Header Section */}
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            variants={sectionFade}
-            className="flex justify-between text-base sm:text-2xl mb-4">
-            <Title text1={t('ALL')} text2={t('COLLECTION')} />
-            <select
-              className="border-2 border-gray-300 text-sm px-2"
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value)}
-            >
-              <option value="relavent">{t('SORT_BY_RELEVANT')}</option>
-              <option value="low-high">{t('SORT_BY_LOW_HIGH')}</option>
-              <option value="high-low">{t('SORT_BY_HIGH_LOW')}</option>
-            </select>
-          </motion.div>
-          {/* Products Grid Section */}
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            variants={sectionFade}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-6">
-            {filterProducts.length > 0 ? (
-              filterProducts.map((item) => (
-                <ProductItem
-                  key={item._id}
-                  id={item._id}
-                  name={item.name}
-                  price={item.price}
-                  image={item.image}
-                />
-              ))
-            ) : (
-              <p className="text-center col-span-full text-gray-400">
-                {t('NO_PRODUCTS_MATCH')}
-              </p>
-            )}
-          </motion.div>
+      {/* Title */}
+      <h1 className="text-4xl font-bold text-center my-20 tracking-widest">
+        {t("PRODUCTS")}
+      </h1>
+
+      {/* Filter/Sort Row */}
+      <div className="flex justify-between items-center mb-8">
+        <button
+          className="text-xs font-semibold tracking-widest flex items-center gap-2 cursor-pointer"
+          onClick={() => setShowFilter(true)}
+        >
+          {/* Tune SVG icon */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 17h6m0 0v-2m0 2v2m6-6h6m0 0v-2m0 2v2M3 7h6m0 0V5m0 2v2m6 6h6m0 0v-2m0 2v2"
+            />
+          </svg>
+          {t("FILTER_AND_SORT")}
+        </button>
+        <div className="flex items-center gap-8">
+          <select
+            className="text-xs w-[180px] font-semibold tracking-widest border-none outline-none bg-transparent cursor-pointer"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            <option value="featured">{t("FEATURED")}</option>
+            <option value="best-selling">{t("BEST_SELLING")}</option>
+            <option value="az">{t("ALPHABETICALLY_AZ")}</option>
+            <option value="za">{t("ALPHABETICALLY_ZA")}</option>
+            <option value="price-low-high">{t("PRICE_LOW_HIGH")}</option>
+            <option value="price-high-low">{t("PRICE_HIGH_LOW")}</option>
+            <option value="date-old-new">{t("DATE_OLD_NEW")}</option>
+            <option value="date-new-old">{t("DATE_NEW_OLD")}</option>
+          </select>
+          <span className="text-xs text-gray-500">
+            {filterProducts.length} {t("PRODUCTS")}
+          </span>
         </div>
       </div>
-    </div>
+
+      {/* Filter Sidebar/Modal */}
+      <AnimatePresence>
+        {showFilter && (
+          <>
+            {/* Overlay */}
+            <motion.div
+              className="fixed inset-0 bg-black z-50"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.3 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              onClick={() => setShowFilter(false)}
+              style={{ pointerEvents: "auto" }}
+            />
+            {/* Sidebar */}
+            <motion.div
+              className="fixed top-0 left-0 h-full w-100 bg-white p-6 shadow-lg z-50"
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -380 }}
+              transition={{ type: "spring", stiffness: 400, damping: 40 }}
+            >
+              <button
+                className="absolute top-4 right-4 text-xl"
+                onClick={() => setShowFilter(false)}
+              >
+                ×
+              </button>
+              <h2 className="text-lg font-bold mb-4">{t("FILTER_AND_SORT")}</h2>
+
+              {/* Availability Filter */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={inStock}
+                    onChange={(e) => setInStock(e.target.checked)}
+                  />
+                  Availability (In stock)
+                </label>
+              </div>
+
+              {/* Price Range Filter */}
+              <div className="mb-4">
+                <label className="block mb-1">{t("PRICE")}</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    className="border border-gray-200 outline-none px-2 py-1 w-1/2"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    className="border border-gray-200 outline-none px-2 py-1 w-1/2"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Sort Options */}
+              <div className="mb-4">
+                <label className="block mb-1">{t("SORT_BY")}</label>
+                <select
+                  className="w-full border border-gray-200 outline-none px-2 py-1"
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value)}
+                >
+                  <option value="featured">{t("FEATURED")}</option>
+                  <option value="best-selling">{t("BEST_SELLING")}</option>
+                  <option value="az">{t("ALPHABETICALLY_AZ")}</option>
+                  <option value="za">{t("ALPHABETICALLY_ZA")}</option>
+                  <option value="price-low-high">{t("PRICE_LOW_HIGH")}</option>
+                  <option value="price-high-low">{t("PRICE_HIGH_LOW")}</option>
+                  <option value="date-old-new">{t("DATE_OLD_NEW")}</option>
+                  <option value="date-new-old">{t("DATE_NEW_OLD")}</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-between mt-8">
+                <button
+                  className="text-xs cursor-pointer"
+                  onClick={() => {
+                    setInStock(false);
+                    setMinPrice("");
+                    setMaxPrice("");
+                    setSelectedCategories([]);
+                    setSelectedSubCategories([]);
+                    setSelectedGenders([]);
+                    setSelectedFitTypes([]);
+                    setSortOption("featured");
+                  }}
+                >
+                  {t("CLEAR")}
+                </button>
+                <button
+                  className="bg-black text-white px-4 py-2 text-xs cursor-pointer"
+                  onClick={() => setShowFilter(false)}
+                >
+                  {t("APPLY")}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Products Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        {filterProducts.length > 0 ? (
+          filterProducts.map((item) => (
+            <ProductItem
+              key={item._id}
+              id={item._id}
+              name={item.name}
+              price={item.price}
+              image={item.image}
+            />
+          ))
+        ) : (
+          <p className="col-span-full text-center text-gray-400">
+            {t("NO_PRODUCTS_MATCH")}
+          </p>
+        )}
+      </div>
+    </motion.div>
   );
 };
 

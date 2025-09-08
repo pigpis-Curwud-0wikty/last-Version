@@ -16,11 +16,21 @@ import Footer from "./components/Footer";
 import SearchBar from "./components/SearchBar";
 import SignUp from "./pages/SignUp";
 import VerifyEmail from './pages/VerifyEmail';
-import ForgotPassword from './pages/ForgotPassword';
+import ForgotPassword from './pages/ForgotPassword';  
+import ResetPassword from './pages/ResetPassword';
 import DenimCollection from "./pages/DenimCollection";
 import Policy from "./pages/Policy";
 import ApiTest from "./components/ApiTest";
-  
+import ChangeEmail from "./pages/ChangeEmail";
+import ChangePassword from "./pages/ChangePassword";
+import UploadPhoto from "./pages/UploadPhoto";
+import Profile from "./pages/Profile";
+import CategoryPage from "./pages/CategoryPage";
+import SubcategoryPage from "./pages/SubcategoryPage";
+import CollectionProducts from "./pages/CollectionProducts";
+import RequestPasswordReset from "./pages/RequestPasswordReset";  
+import ScrollToTopButton from "./components/ScrollToTopButton";
+
 const App = () => {
   const location = useLocation();
   return (
@@ -41,12 +51,22 @@ const App = () => {
           <Route path="/place-order" element={<PlaceOrder />} />
           <Route path="/product/:productId" element={<Product />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/request-password" element={<RequestPasswordReset />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/denim-collection" element={<DenimCollection />} />
           <Route path="/policy" element={<Policy />} />
           <Route path="/api-test" element={<ApiTest />} /> 
+          <Route path="/change-email" element={<ChangeEmail />} />
+          <Route path="/change-password" element={<ChangePassword />} />
+          <Route path="/upload-photo" element={<UploadPhoto />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/category/:categoryId" element={<CategoryPage />} />
+          <Route path="/subcategory/:subcategoryId" element={<SubcategoryPage />} />
+          <Route path="/collection-products/:collectionId" element={<CollectionProducts />} />
         </Routes>
         <Footer />
+        <ScrollToTopButton />
       </div>
     </>
   );

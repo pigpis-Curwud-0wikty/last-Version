@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { toast } from "react-toastify";
 import axios from "axios";
 import { backendUrl } from "../../App";
@@ -14,7 +14,6 @@ const AddSubCategory = ({
   setSubCategoryName,
   subCategoryDescription,
   setSubCategoryDescription,
-  subCategoryDisplayOrder,
   setSubCategoryDisplayOrder,
   subCategoryImages,
   setSubCategoryImages,
@@ -44,7 +43,8 @@ const AddSubCategory = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!token) return toast.error("You must log in first!");
-    if (!parentCategoryId) return toast.error("Please select a parent category");
+    if (!parentCategoryId)
+      return toast.error("Please select a parent category");
 
     const name = cleanText(subCategoryName);
     const description = cleanText(subCategoryDescription);
@@ -57,23 +57,33 @@ const AddSubCategory = ({
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("Name", name);
-      formData.append("Description", description);
-      formData.append("CategoryId", Number(parentCategoryId));
+      // Body لازم يكون JSON زي swagger
+      const body = {
+        name,
+        description,
+        categoryId: Number(parentCategoryId),
+      };
 
       let res;
       if (editSubCategoryMode && editSubCategoryId) {
         // Update
         res = await axios.put(
           `${backendUrl}/api/subcategories/${editSubCategoryId}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          body,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
         );
       } else {
         // Create
-        res = await axios.post(`${backendUrl}/api/subcategories`, formData, {
-          headers: { Authorization: `Bearer ${token}` },
+        res = await axios.post(`${backendUrl}/api/subcategories`, body, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         });
       }
 
@@ -82,7 +92,9 @@ const AddSubCategory = ({
 
       if (!newId) throw new Error("Failed to get subcategory ID");
 
-      toast.success(editSubCategoryMode ? "Subcategory updated!" : "Subcategory created!");
+      toast.success(
+        editSubCategoryMode ? "Subcategory updated!" : "Subcategory created!"
+      );
 
       // Main Image
       if (subCategoryMainImage) {
@@ -116,8 +128,7 @@ const AddSubCategory = ({
     } catch (err) {
       console.error(err);
       const msg =
-        err.response?.data?.responseBody?.message ||
-        "Error saving subcategory";
+        err.response?.data?.responseBody?.message || "Error saving subcategory";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -222,8 +233,8 @@ const AddSubCategory = ({
               ? "Updating..."
               : "Adding..."
             : editSubCategoryMode
-            ? "Update Sub-Category"
-            : "Add Sub-Category"}
+              ? "Update Sub-Category"
+              : "Add Sub-Category"}
         </button>
       </form>
     </div>

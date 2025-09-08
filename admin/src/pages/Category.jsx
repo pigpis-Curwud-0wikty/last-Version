@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import axios from "axios";
 import { backendUrl } from "../App";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 
 // Import components
 import AddCategory from "../components/category/AddCategory";
@@ -14,24 +14,23 @@ import ListSubCategory from "../components/category/ListSubCategory";
 const Categorys = ({ token }) => {
   const { categoryId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
-  
+
   const [activeTab, setActiveTab] = useState("add");
   const [hasInitializedFromUrl, setHasInitializedFromUrl] = useState(false);
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(false);
 
-  // form states
+  // form states for category
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [displayOrder, setDisplayOrder] = useState(1);
   const [images, setImages] = useState([]);
   const [mainImage, setMainImage] = useState(null);
 
-  // edit states
+  // edit category states
   const [editMode, setEditMode] = useState(false);
   const [editCategoryId, setEditCategoryId] = useState(null);
-  const [showModal, setShowModal] = useState(false);
 
   // sub-category states
   const [subCategories, setSubCategories] = useState([]);
@@ -46,8 +45,12 @@ const Categorys = ({ token }) => {
 
   // search states for ViewCategory
   const [searchId, setSearchId] = useState(categoryId || "");
-  const [searchActive, setSearchActive] = useState(searchParams.get("isActive") || "");
-  const [searchDeleted, setSearchDeleted] = useState(searchParams.get("includeDeleted") || "false");
+  const [searchActive, setSearchActive] = useState(
+    searchParams.get("isActive") || ""
+  );
+  const [searchDeleted, setSearchDeleted] = useState(
+    searchParams.get("includeDeleted") || "false"
+  );
 
   // Fetch categories
   const fetchCategories = async () => {
@@ -78,12 +81,50 @@ const Categorys = ({ token }) => {
 
   // Update search states when URL parameters change
   useEffect(() => {
-    console.log('URL params changed:', { categoryId, searchParams: Object.fromEntries(searchParams), hasInitializedFromUrl });
-    
     if (categoryId && !hasInitializedFromUrl) {
-      console.log('Setting up category view for ID:', categoryId);
       setSearchId(categoryId);
-      setActiveTab("category");
+
+      // Check if we're on the edit page
+      if (location.pathname.includes("/edit/")) {
+        // Set edit mode
+        setEditMode(true);
+        setEditCategoryId(Number(categoryId));
+        setActiveTab("add");
+
+        // Fetch category details for editing
+        const fetchCategoryDetails = async () => {
+          try {
+            const res = await axios.get(
+              `${backendUrl}/api/categories/${categoryId}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            );
+
+            const cat =
+              res.data?.responseBody?.data || res.data?.data || res.data;
+            setName(cat.name || "");
+            setDescription(cat.description || "");
+            setDisplayOrder(cat.displayOrder || 1);
+
+            if (cat.images?.length > 0) {
+              const mainImg = cat.images.find((img) => img.isMain);
+              if (mainImg) {
+                setMainImage(mainImg);
+              }
+              setImages(cat.images.filter((img) => !img.isMain));
+            }
+          } catch (err) {
+            console.error("❌ Error fetching category:", err);
+            toast.error("Failed to load category details");
+          }
+        };
+
+        fetchCategoryDetails();
+      } else {
+        setActiveTab("category");
+      }
+
       setHasInitializedFromUrl(true);
     }
     if (searchParams.get("isActive")) {
@@ -92,8 +133,15 @@ const Categorys = ({ token }) => {
     if (searchParams.get("includeDeleted")) {
       setSearchDeleted(searchParams.get("includeDeleted"));
     }
-  }, [categoryId, searchParams, hasInitializedFromUrl]);
+  }, [
+    categoryId,
+    searchParams,
+    hasInitializedFromUrl,
+    location.pathname,
+    token,
+  ]);
 
+  // ✅ Handle Edit SubCategory
   const handleEditSubCategory = (subCat) => {
     setEditSubCategoryMode(true);
     setEditSubCategoryId(subCat.id);
@@ -102,6 +150,37 @@ const Categorys = ({ token }) => {
     setSubCategoryDisplayOrder(subCat.displayOrder);
     setParentCategoryId(Number(subCat.parentCategoryId));
     setActiveTab("add-sub");
+  };
+
+  // ✅ Handle Edit Category
+  const handleEditCategory = (cat) => {
+    if (cat) {
+      // 🟢 وضع التعديل
+      setEditMode(true);
+      setEditCategoryId(cat.id);
+
+      setName(cat.name || "");
+      setDescription(cat.description || "");
+      setDisplayOrder(cat.displayOrder || 1);
+      setImages(cat.images || []);
+      setMainImage(cat.mainImage || null);
+
+      navigate(`/category/edit/${cat.id}`); // صفحة تعديل
+      setActiveTab("add");
+    } else {
+      // 🔴 وضع الإضافة (تفريغ الحقول)
+      setEditMode(false);
+      setEditCategoryId(null);
+
+      setName("");
+      setDescription("");
+      setDisplayOrder(1);
+      setImages([]);
+      setMainImage(null);
+
+      navigate(`/collections`); // صفحة إضافة جديدة
+      setActiveTab("add");
+    }
   };
 
   return (
@@ -154,7 +233,25 @@ const Categorys = ({ token }) => {
 
       {/* Tab Content */}
       {activeTab === "add" && (
-        <AddCategory token={token} fetchCategories={fetchCategories} setActiveTab={setActiveTab} />
+        <AddCategory
+          token={token}
+          fetchCategories={fetchCategories}
+          setActiveTab={setActiveTab}
+          editMode={editMode}
+          editCategoryId={editCategoryId}
+          name={name}
+          setName={setName}
+          description={description}
+          setDescription={setDescription}
+          displayOrder={displayOrder}
+          setDisplayOrder={setDisplayOrder}
+          images={images}
+          setImages={setImages}
+          mainImage={mainImage}
+          setMainImage={setMainImage}
+          setEditMode={setEditMode} // عشان نرجعه false بعد الحفظ
+          editCategoryMode={editMode}
+        />
       )}
 
       {activeTab === "list" && (
@@ -163,14 +260,7 @@ const Categorys = ({ token }) => {
           categories={categories}
           setCategories={setCategories}
           setActiveTab={setActiveTab}
-          handleEditCategory={(cat) => {
-            setEditMode(true);
-            setEditCategoryId(cat.id);
-            setName(cat.name);
-            setDescription(cat.description);
-            setDisplayOrder(cat.displayOrder);
-            setShowModal(true);
-          }}
+          handleEditCategory={handleEditCategory}
           setParentCategoryId={setParentCategoryId}
           fetchCategories={fetchCategories}
         />
@@ -242,18 +332,15 @@ const Categorys = ({ token }) => {
           <ViewCategory
             token={token}
             categoryId={searchId}
-            isActive={searchActive === "true" ? true : searchActive === "false" ? false : undefined}
+            isActive={
+              searchActive === "true"
+                ? true
+                : searchActive === "false"
+                  ? false
+                  : undefined
+            }
             includeDeleted={searchDeleted === "true"}
           />
-        </div>
-      )}
-
-      {/* Modal for Edit */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white p-6 rounded-lg w-[600px] max-h-[90vh] overflow-y-auto">
-            {/* ...form for edit category remains unchanged... */}
-          </div>
         </div>
       )}
     </div>
