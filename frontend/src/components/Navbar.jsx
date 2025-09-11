@@ -16,6 +16,7 @@ const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const { t, i18n } = useTranslation();
   const [hovered, setHovered] = useState(false);
+  const [hoveredCategoryId, setHoveredCategoryId] = useState(null);
 
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem("user");
@@ -174,7 +175,12 @@ const Navbar = () => {
               <ul className="flex flex-col py-2">
                 {Array.isArray(categories) && categories.length > 0 ? (
                   categories.map((cat) => (
-                    <li key={cat.id} className="relative group/subcategory">
+                    <li
+                      key={cat.id}
+                      className="relative"
+                      onMouseEnter={() => setHoveredCategoryId(cat.id)}
+                      onMouseLeave={() => setHoveredCategoryId(null)}
+                    >
                       <Link
                         to={`/category/${cat.id}`}
                         className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 font-medium transition-colors duration-150"
@@ -191,7 +197,11 @@ const Navbar = () => {
                       {/* Subcategories */}
                       {Array.isArray(cat.subcategories) &&
                         cat.subcategories.length > 0 && (
-                          <ul className="absolute left-full top-0 w-64 bg-white shadow-lg  opacity-0 invisible group-hover/subcategory:opacity-100 group-hover/subcategory:visible transition-all duration-200 z-50">
+                          <ul
+                            className={`absolute left-full top-0 w-64 bg-white shadow-lg transition-all duration-200 z-50 ${
+                              hoveredCategoryId === cat.id ? "opacity-100 visible" : "opacity-0 invisible"
+                            }`}
+                          >
                             {cat.subcategories.map((sub) => (
                               <li key={sub.id}>
                                 <Link

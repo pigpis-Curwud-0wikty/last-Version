@@ -31,7 +31,7 @@ const ProductList = ({ token }) => {
     status: "",
     includeDeleted: false,
   });
-  
+
   // Store subcategories fetched from API
   const [subcategories, setSubcategories] = useState([]);
 
@@ -41,7 +41,7 @@ const ProductList = ({ token }) => {
     { id: 2, name: "Regular" },
     { id: 3, name: "Oversized" },
   ];
-  
+
   // Common colors for filtering
   const colors = [
     { id: "black", name: "Black" },
@@ -65,7 +65,7 @@ const ProductList = ({ token }) => {
     { id: "xl", name: "XL" },
     { id: "xxl", name: "XXL" },
   ];
-  
+
   const [searchTerm, setSearchTerm] = useState("");
 
   // دوال مساعدة لتحويل الأرقام لنص
@@ -82,7 +82,7 @@ const ProductList = ({ token }) => {
 
   // ✅ فلترة + ترتيب المنتجات
   const filteredProducts = [...products];
-  
+
   // Only apply search term filtering if a search term exists
   if (searchTerm) {
     filteredProducts.sort((a, b) => {
@@ -119,7 +119,22 @@ const ProductList = ({ token }) => {
   const fetchProducts = async (params = {}) => {
     setLoading(true);
     try {
-      // Clean and prepare parameters for API request
+      let items = [];
+      let total = 0;
+
+      // Use getAll method to fetch all products
+      const allProductsResponse = await API.products.getAll(token);
+      console.log("📥 All Products API Response:", allProductsResponse);
+
+      // Get all products from the response
+      const allProducts = allProductsResponse?.responseBody?.data || [];
+      total =
+        allProductsResponse?.responseBody?.totalCount || allProducts.length;
+
+      // Apply filtering based on search parameters
+      items = allProducts;
+
+      // Clean and prepare parameters for filtering
       const cleanParams = {
         ...Object.fromEntries(
           Object.entries(params).filter(([, v]) => v !== null && v !== "")
@@ -127,44 +142,114 @@ const ProductList = ({ token }) => {
         page: params.page,
         pageSize: params.pageSize,
       };
-      
+
       // Ensure numeric parameters are properly formatted
-      if (cleanParams.subcategoryId) cleanParams.subcategoryId = Number(cleanParams.subcategoryId);
+      if (cleanParams.subcategoryId)
+        cleanParams.subcategoryId = Number(cleanParams.subcategoryId);
       if (cleanParams.gender) cleanParams.gender = Number(cleanParams.gender);
-      if (cleanParams.fitType) cleanParams.fitType = Number(cleanParams.fitType);
-      if (cleanParams.minPrice) cleanParams.minPrice = Number(cleanParams.minPrice);
-      if (cleanParams.maxPrice) cleanParams.maxPrice = Number(cleanParams.maxPrice);
-      if (cleanParams.minSize) cleanParams.minSize = Number(cleanParams.minSize);
-      if (cleanParams.maxSize) cleanParams.maxSize = Number(cleanParams.maxSize);
-      
+      if (cleanParams.fitType)
+        cleanParams.fitType = Number(cleanParams.fitType);
+      if (cleanParams.minPrice)
+        cleanParams.minPrice = Number(cleanParams.minPrice);
+      if (cleanParams.maxPrice)
+        cleanParams.maxPrice = Number(cleanParams.maxPrice);
+      if (cleanParams.minSize)
+        cleanParams.minSize = Number(cleanParams.minSize);
+      if (cleanParams.maxSize)
+        cleanParams.maxSize = Number(cleanParams.maxSize);
+
       // Ensure boolean parameters are properly formatted
       cleanParams.inStock = cleanParams.inStock === true;
       cleanParams.onSale = cleanParams.onSale === true;
-      
-      // Make API request with advanced search parameters
-      const response = await API.products.list(cleanParams, token);
-      console.log("📥 Products API Response:", response);
 
-      let items = response?.responseBody?.data || [];
-      const total = response?.responseBody?.totalCount || items.length;
+      // Apply client-side filtering based on search parameters
+      if (cleanParams.searchTerm) {
+        const searchTerm = cleanParams.searchTerm.toLowerCase();
+        items = items.filter((product) => {
+          const gender = genderMap[product.gender] || "";
+          const fitType = fitTypeMap[product.fitType] || "";
+          const productText =
+            product.id.toString() +
+            " " +
+            product.name.toLowerCase() +
+            " " +
+            product.description.toLowerCase() +
+            " " +
+            product.price.toString() +
+            " " +
+            gender.toLowerCase() +
+            " " +
+            fitType.toLowerCase();
+          return productText.includes(searchTerm);
+        });
+      }
+
+      // Apply additional filters
+      if (cleanParams.subcategoryId) {
+        items = items.filter(
+          (product) => product.subcategoryId === cleanParams.subcategoryId
+        );
+      }
+
+      if (cleanParams.gender) {
+        items = items.filter(
+          (product) => product.gender === cleanParams.gender
+        );
+      }
+
+      if (cleanParams.fitType) {
+        items = items.filter(
+          (product) => product.fitType === cleanParams.fitType
+        );
+      }
 
       // Handle deleted items based on includeDeleted parameter
-      // This parameter is passed to the API, but we also filter the results here
-      // to ensure consistency with the UI
       if (params.includeDeleted === false) {
         items = items.filter((p) => !p.isDeleted);
       }
-      
+
       // Only filter by isActive if it's explicitly set
       if (params.isActive === true) {
         items = items.filter((p) => p.isActive === true);
       } else if (params.isActive === false) {
         items = items.filter((p) => p.isActive === false);
       }
-      // If params.isActive is undefined, don't filter by active status
+
+      // Apply price filters if specified
+      if (cleanParams.minPrice) {
+        items = items.filter(
+          (product) => product.price >= cleanParams.minPrice
+        );
+      }
+
+      if (cleanParams.maxPrice) {
+        items = items.filter(
+          (product) => product.price <= cleanParams.maxPrice
+        );
+      }
+
+      // Apply sorting if specified
+      if (cleanParams.sortBy) {
+        const sortField = cleanParams.sortBy;
+        const sortDirection = cleanParams.sortDescending ? -1 : 1;
+
+        items.sort((a, b) => {
+          if (a[sortField] < b[sortField]) return -1 * sortDirection;
+          if (a[sortField] > b[sortField]) return 1 * sortDirection;
+          return 0;
+        });
+      }
+
+      // Store the total count after all filtering
+      total = items.length;
+
+      // Apply pagination
+      const startIndex = (cleanParams.page - 1) * cleanParams.pageSize;
+      const endIndex = startIndex + cleanParams.pageSize;
+      const paginatedItems = items.slice(startIndex, endIndex);
 
       // Set products and total count
-      setProducts(items);
+      setProducts(paginatedItems);
       setTotalCount(total);
     } catch (error) {
       console.error("❌ Error fetching products:", error);
@@ -189,12 +274,12 @@ const ProductList = ({ token }) => {
   };
 
   useEffect(() => {
-    // fetch all products on first load only - ensure we're not filtering by active status
+    // fetch all products on first load only - ensure we're showing all products (active and non-active)
     fetchProducts({
       // Explicitly set includeDeleted to false but don't filter by isActive
-      includeDeleted: false
+      includeDeleted: false,
     });
-    
+
     // Fetch subcategories
     const fetchSubcategories = async () => {
       try {
@@ -214,16 +299,16 @@ const ProductList = ({ token }) => {
 
     // Process search parameters
     const params = { ...searchParams };
-    
+
     // Convert status to isActive parameter
     if (params.status) {
-      if (params.status === 'active') {
+      if (params.status === "active") {
         params.isActive = true;
         params.includeDeleted = false;
-      } else if (params.status === 'inactive') {
+      } else if (params.status === "inactive") {
         params.isActive = false;
         params.includeDeleted = false;
-      } else if (params.status === 'deleted') {
+      } else if (params.status === "deleted") {
         params.includeDeleted = true;
         // When showing deleted items, don't filter by active status
         delete params.isActive;
@@ -236,28 +321,29 @@ const ProductList = ({ token }) => {
       // If not explicitly set, default to false
       params.includeDeleted = params.includeDeleted === true;
     }
-    
+
     // Process advanced search parameters
     // Convert string values to appropriate types for API
-    if (params.subcategoryId) params.subcategoryId = Number(params.subcategoryId);
+    if (params.subcategoryId)
+      params.subcategoryId = Number(params.subcategoryId);
     if (params.gender) params.gender = Number(params.gender);
     if (params.fitType) params.fitType = Number(params.fitType);
-    
+
     // Handle price ranges
     if (params.minPrice) params.minPrice = Number(params.minPrice);
     if (params.maxPrice) params.maxPrice = Number(params.maxPrice);
-    
+
     // Handle size ranges
     if (params.minSize) params.minSize = Number(params.minSize);
     if (params.maxSize) params.maxSize = Number(params.maxSize);
-    
+
     // Ensure boolean values are properly formatted
     params.inStock = params.inStock === true;
     params.onSale = params.onSale === true;
-    
+
     // Reset to page 1 for new searches
     params.page = 1;
-    
+
     // Call the API with advanced search parameters
     fetchProducts(params);
   };
@@ -295,14 +381,14 @@ const ProductList = ({ token }) => {
     const updatedParams = { ...searchParams, page: newPage };
     setSearchParams(updatedParams);
     fetchProducts(updatedParams);
-    
+
     // Scroll to top of the table for better user experience
     window.scrollTo({
-      top: document.querySelector('table').offsetTop - 100,
-      behavior: 'smooth'
+      top: document.querySelector("table").offsetTop - 100,
+      behavior: "smooth",
     });
   };
-  
+
   // Handle changing the number of items per page
   const handlePageSizeChange = (newSize) => {
     const updatedParams = { ...searchParams, pageSize: newSize, page: 1 };
@@ -438,11 +524,11 @@ const ProductList = ({ token }) => {
                   // Calculate match scores for each product
                   let aScore = 0;
                   let bScore = 0;
-                  
+
                   // Match by search term
                   if (searchParams.searchTerm) {
                     const term = searchParams.searchTerm.toLowerCase();
-                    
+
                     // Convert values to text for comparison
                     const aValues = [
                       a.name,
@@ -453,7 +539,7 @@ const ProductList = ({ token }) => {
                     ]
                       .filter(Boolean)
                       .map((val) => val.toLowerCase());
-                    
+
                     const bValues = [
                       b.name,
                       b.description,
@@ -463,72 +549,116 @@ const ProductList = ({ token }) => {
                     ]
                       .filter(Boolean)
                       .map((val) => val.toLowerCase());
-                    
+
                     // Add score for search term matches
                     if (aValues.some((val) => val.includes(term))) aScore += 10;
                     if (bValues.some((val) => val.includes(term))) bScore += 10;
                   }
-                  
+
                   // Match by subcategory
                   if (searchParams.subcategoryId) {
-                    if (a.subcategoryId == searchParams.subcategoryId) aScore += 5;
-                    if (b.subcategoryId == searchParams.subcategoryId) bScore += 5;
+                    if (a.subcategoryId == searchParams.subcategoryId)
+                      aScore += 5;
+                    if (b.subcategoryId == searchParams.subcategoryId)
+                      bScore += 5;
                   }
-                  
+
                   // Match by gender
                   if (searchParams.gender) {
                     if (a.gender == searchParams.gender) aScore += 5;
                     if (b.gender == searchParams.gender) bScore += 5;
                   }
-                  
+
                   // Match by fit type
                   if (searchParams.fitType) {
                     if (a.fitType == searchParams.fitType) aScore += 5;
                     if (b.fitType == searchParams.fitType) bScore += 5;
                   }
-                  
+
                   // Match by price range
                   if (searchParams.minPrice || searchParams.maxPrice) {
                     const minPrice = searchParams.minPrice || 0;
                     const maxPrice = searchParams.maxPrice || Infinity;
-                    
+
                     if (a.price >= minPrice && a.price <= maxPrice) aScore += 3;
                     if (b.price >= minPrice && b.price <= maxPrice) bScore += 3;
                   }
-                  
+
                   // Match by color (check product variants)
                   if (searchParams.color && a.variants && b.variants) {
-                    if (a.variants.some(v => v.color?.toLowerCase() === searchParams.color.toLowerCase())) aScore += 3;
-                    if (b.variants.some(v => v.color?.toLowerCase() === searchParams.color.toLowerCase())) bScore += 3;
+                    if (
+                      a.variants.some(
+                        (v) =>
+                          v.color?.toLowerCase() ===
+                          searchParams.color.toLowerCase()
+                      )
+                    )
+                      aScore += 3;
+                    if (
+                      b.variants.some(
+                        (v) =>
+                          v.color?.toLowerCase() ===
+                          searchParams.color.toLowerCase()
+                      )
+                    )
+                      bScore += 3;
                   }
-                  
+
                   // Match by size range
-                  if ((searchParams.minSize || searchParams.maxSize) && a.variants && b.variants) {
+                  if (
+                    (searchParams.minSize || searchParams.maxSize) &&
+                    a.variants &&
+                    b.variants
+                  ) {
                     const minSize = searchParams.minSize || 0;
                     const maxSize = searchParams.maxSize || Infinity;
-                    
-                    if (a.variants.some(v => v.size >= minSize && v.size <= maxSize)) aScore += 3;
-                    if (b.variants.some(v => v.size >= minSize && v.size <= maxSize)) bScore += 3;
+
+                    if (
+                      a.variants.some(
+                        (v) => v.size >= minSize && v.size <= maxSize
+                      )
+                    )
+                      aScore += 3;
+                    if (
+                      b.variants.some(
+                        (v) => v.size >= minSize && v.size <= maxSize
+                      )
+                    )
+                      bScore += 3;
                   }
-                  
+
                   // Match by specific size
                   if (searchParams.size && a.variants && b.variants) {
-                    if (a.variants.some(v => v.size?.toString().toLowerCase() === searchParams.size.toLowerCase())) aScore += 3;
-                    if (b.variants.some(v => v.size?.toString().toLowerCase() === searchParams.size.toLowerCase())) bScore += 3;
+                    if (
+                      a.variants.some(
+                        (v) =>
+                          v.size?.toString().toLowerCase() ===
+                          searchParams.size.toLowerCase()
+                      )
+                    )
+                      aScore += 3;
+                    if (
+                      b.variants.some(
+                        (v) =>
+                          v.size?.toString().toLowerCase() ===
+                          searchParams.size.toLowerCase()
+                      )
+                    )
+                      bScore += 3;
                   }
-                  
+
                   // Match by stock status
                   if (searchParams.inStock) {
                     if (a.availableQuantity > 0) aScore += 2;
                     if (b.availableQuantity > 0) bScore += 2;
                   }
-                  
+
                   // Match by sale status
                   if (searchParams.onSale) {
                     if (a.discountPercentage > 0) aScore += 2;
                     if (b.discountPercentage > 0) bScore += 2;
                   }
-                  
+
                   // Return comparison result based on scores
                   return bScore - aScore; // Higher score first
                 })
@@ -611,7 +741,9 @@ const ProductList = ({ token }) => {
                               Delete
                             </button>
                             <button
-                              onClick={() => navigate(`/add?edit=${product.id}`)}
+                              onClick={() =>
+                                navigate(`/add?edit=${product.id}`)
+                              }
                               className="px-3 py-1 bg-orange-100 text-orange-800 rounded text-xs"
                             >
                               Update
@@ -650,10 +782,10 @@ const ProductList = ({ token }) => {
           <div className="flex flex-col md:flex-row items-center gap-4 mb-4 md:mb-0">
             <div className="text-gray-600">
               Showing {(searchParams.page - 1) * searchParams.pageSize + 1} to{" "}
-              {Math.min(searchParams.page * searchParams.pageSize, totalCount)} of{" "}
-              {totalCount} results
+              {Math.min(searchParams.page * searchParams.pageSize, totalCount)}{" "}
+              of {totalCount} results
             </div>
-            
+
             <div className="flex items-center">
               <span className="mr-2 text-gray-600">Items per page:</span>
               <select
@@ -661,83 +793,69 @@ const ProductList = ({ token }) => {
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                 className="border rounded px-2 py-1 bg-white text-gray-700"
               >
-                <option value="5">5</option>
                 <option value="10">10</option>
                 <option value="20">20</option>
                 <option value="50">50</option>
+                <option value="100">100</option>
               </select>
             </div>
           </div>
 
           {/* Right side - page controls */}
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={() => handlePageChange(searchParams.page - 1)}
-              disabled={searchParams.page === 1}
-              className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:text-gray-500 hover:bg-blue-600 transition-colors duration-200 flex items-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Previous
-            </button>
-            
-            {/* Page numbers */}
-            <div className="flex items-center space-x-1">
-              {/* Generate page numbers */}
-              {Array.from({ length: Math.min(5, Math.ceil(totalCount / searchParams.pageSize)) }, (_, i) => {
-                // Calculate which page numbers to show
-                const totalPages = Math.ceil(totalCount / searchParams.pageSize);
-                let pageNum;
-                
-                if (totalPages <= 5) {
-                  // If 5 or fewer pages, show all pages
-                  pageNum = i + 1;
-                } else {
-                  // If more than 5 pages, show pages around current page
-                  const currentPage = searchParams.page;
-                  if (currentPage <= 3) {
-                    // Near start
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    // Near end
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    // In middle
-                    pageNum = currentPage - 2 + i;
-                  }
-                }
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    className={`w-8 h-8 flex items-center justify-center rounded ${searchParams.page === pageNum ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
+          <div className="flex gap-4 items-center">
+            <div className="text-gray-600 font-medium">
+              Page {searchParams.page} of{" "}
+              {Math.ceil(totalCount / searchParams.pageSize)}
             </div>
 
-            <button
-              onClick={() => handlePageChange(searchParams.page + 1)}
-              disabled={
-                searchParams.page >=
-                Math.ceil(totalCount / searchParams.pageSize)
-              }
-              className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:text-gray-500 hover:bg-blue-600 transition-colors duration-200 flex items-center"
-            >
-              Next
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-          
-          {/* Total pages indicator */}
-          <div className="text-gray-600 mt-2 md:mt-0 md:ml-4">
-            Page {searchParams.page} of {Math.ceil(totalCount / searchParams.pageSize)}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handlePageChange(searchParams.page - 1)}
+                disabled={searchParams.page === 1}
+                className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:text-gray-500 hover:bg-blue-600 transition-colors duration-200 flex items-center"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                Previous
+              </button>
+
+              <button
+                onClick={() => handlePageChange(searchParams.page + 1)}
+                disabled={
+                  searchParams.page >=
+                  Math.ceil(totalCount / searchParams.pageSize)
+                }
+                className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:text-gray-500 hover:bg-blue-600 transition-colors duration-200 flex items-center"
+              >
+                Next
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 ml-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useContext } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/frontend_assets/assets";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
@@ -19,6 +19,7 @@ const HeroImage = () => {
   const { t } = useTranslation();
   const { backendUrl } = useContext(ShopContext);
   const swiperRef = useRef();
+  const navigate = useNavigate();
   const [activeIndex, setActiveIndex] = useState(0);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +108,17 @@ const HeroImage = () => {
         onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
       >
         {sliderImages.map((img, idx) => (
-          <SwiperSlide key={idx} className="relative">
+          <SwiperSlide
+            key={idx}
+            className="relative cursor-pointer"
+            onClick={() => {
+              if (collections.length > 0 && idx < collections.length) {
+                navigate(`/collection-products/${collections[idx].id}`);
+              } else {
+                navigate("/collection");
+              }
+            }}
+          >
             {/* Hero image */}
             <img
               src={img}

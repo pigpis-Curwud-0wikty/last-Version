@@ -17,8 +17,73 @@ const logApiError = (error, context = "") => {
   }
 };
 
-// API service for products, discounts, bulk discounts, and images
+// API service for products, discounts, bulk discounts, images, customer addresses, and orders
 const API = {
+  // Order APIs
+  orders: {
+    // Create a new order
+    create: async (orderData, token) => {
+      try {
+        const res = await axios.post(
+          `${backendUrl}/api/Order`,
+          orderData,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        return res.data;
+      } catch (err) {
+        logApiError(err, "createOrder");
+        throw err;
+      }
+    },
+    
+    // Get order by ID
+    getById: async (orderId, token) => {
+      try {
+        const res = await axios.get(
+          `${backendUrl}/api/Order/${orderId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        return res.data;
+      } catch (err) {
+        logApiError(err, "getOrderById");
+        throw err;
+      }
+    },
+  },
+  
+  // Customer Address APIs
+  customerAddresses: {
+    // Get all customer addresses
+    getAll: async (token) => {
+      try {
+        const res = await axios.get(
+          `${backendUrl}/api/CustomerAddress`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        return res.data;
+      } catch (err) {
+        logApiError(err, "getCustomerAddresses");
+        throw err;
+      }
+    },
+  },
+  
   // Product APIs
   products: {
     // Create a new product
@@ -40,6 +105,26 @@ const API = {
       } catch (err) {
         console.error("❌ Error adding product:", err.response?.data || err);
         throw err; // ⬅️ كمان مهم عشان الـ Add.jsx يعرف فيه Error
+      }
+    },
+    
+    // Get all products
+    getAll: async (token) => {
+      try {
+        const res = await axios.get(
+          `${backendUrl}/api/Products`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            params: { page: 1, pageSize: 100 }, // Get a reasonable number of products
+          }
+        );
+
+        return res.data;
+      } catch (err) {
+        console.error("❌ Error fetching products:", err.response?.data || err);
+        throw err;
       }
     },
 
@@ -852,6 +937,75 @@ const API = {
         throw error;
       }
     },
+  },
+  // Order APIs
+  orders: {
+    // Create a new order
+    create: async (orderData, token) => {
+      try {
+        const response = await axios.post(
+          `${backendUrl}/api/Order`,
+          orderData,
+          { 
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              Accept: "text/plain"
+            } 
+          }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "creating order");
+        throw error;
+      }
+    },
+
+    // Get all orders with optional filters
+    list: async (params, token) => {
+      try {
+        const response = await axios.get(
+          `${backendUrl}/api/Order`,
+          { 
+            headers: { Authorization: `Bearer ${token}` },
+            params: params
+          }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "fetching orders");
+        throw error;
+      }
+    },
+
+    // Get order by ID
+    getById: async (orderId, token) => {
+      try {
+        const response = await axios.get(
+          `${backendUrl}/api/Order/${orderId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "fetching order details");
+        throw error;
+      }
+    },
+
+    // Update order status
+    updateStatus: async (orderId, status, token) => {
+      try {
+        const response = await axios.patch(
+          `${backendUrl}/api/Order/${orderId}/status`,
+          { status },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+      } catch (error) {
+        logApiError(error, "updating order status");
+        throw error;
+      }
+    }
   },
 };
 

@@ -33,18 +33,29 @@ const CollectionProducts = () => {
 
         const authToken = localStorage.getItem("token");
 
-        const config = {
-          headers: {
-            "Content-Type": "application/json",
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          },
-        };
+        const baseHeaders = { "Content-Type": "application/json", Accept: "text/plain" };
+        const authHeaders = authToken
+          ? { ...baseHeaders, Authorization: `Bearer ${authToken}` }
+          : baseHeaders;
 
         // ---- Fetch collection ----
-        const collectionResponse = await axios.get(
-          `${backendUrl}/api/Collection/${collectionId}`,
-          config
-        );
+        // Try unauthenticated first for public access; if 401 retry with token
+        let collectionResponse;
+        try {
+          collectionResponse = await axios.get(
+            `${backendUrl}/api/Collection/${collectionId}`,
+            { headers: baseHeaders }
+          );
+        } catch (e) {
+          if (e.response && e.response.status === 401 && authToken) {
+            collectionResponse = await axios.get(
+              `${backendUrl}/api/Collection/${collectionId}`,
+              { headers: authHeaders }
+            );
+          } else {
+            throw e;
+          }
+        }
 
         if (!collectionResponse.data?.responseBody?.data) {
           setError("Collection not found.");
@@ -55,10 +66,23 @@ const CollectionProducts = () => {
 
         // ---- Fetch products ----
         try {
-          const productsResponse = await axios.get(
-            `${backendUrl}/api/Collection/${collectionId}/products`,
-            config
-          );
+          // Products: try unauthenticated first, then retry with auth on 401
+          let productsResponse;
+          try {
+            productsResponse = await axios.get(
+              `${backendUrl}/api/Collection/${collectionId}/products`,
+              { headers: baseHeaders }
+            );
+          } catch (errFirst) {
+            if (errFirst.response && errFirst.response.status === 401 && authToken) {
+              productsResponse = await axios.get(
+                `${backendUrl}/api/Collection/${collectionId}/products`,
+                { headers: authHeaders }
+              );
+            } else {
+              throw errFirst;
+            }
+          }
 
           if (productsResponse.data?.responseBody?.data) {
             setProducts(productsResponse.data.responseBody.data);
