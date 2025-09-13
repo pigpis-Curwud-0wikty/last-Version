@@ -7,14 +7,53 @@ import { useTranslation } from 'react-i18next';
 
 const BestSeller = () => {
   const { t } = useTranslation();
-  const { products } = useContext(ShopContext);
+  const { products, productsLoading } = useContext(ShopContext);
   const [bestSeller, setBestSeller] = useState([]);
 
   useEffect(() => {
+    // Filter active products and get 4 best sellers
     if (Array.isArray(products) && products.length > 0) {
-      setBestSeller(products.slice(products.length - 4, products.length));
+      const activeProducts = products.filter(product => product.isActive === true);
+      
+      // Sort by ID descending to get recent products as best sellers
+      const sortedProducts = activeProducts.sort((a, b) => {
+        const idA = parseInt(a._id) || 0;
+        const idB = parseInt(b._id) || 0;
+        return idB - idA;
+      });
+      
+      // Take the first 4 (most recent active products)
+      setBestSeller(sortedProducts.slice(0, 4));
     }
   }, [products]);
+
+  // Show loading state while products are being fetched
+  if (productsLoading) {
+    return (
+      <div className="my-10 overflow-hidden px-4 sm:px-[2vw] md:px-[2vw] lg:px-[3vw]">
+        <div className="text-left text-3xl py-8">
+          <Title text1={t('BEST')} text2={t('SELLERS')} />
+          <p className="text-xs sm:text-sm md:text-base text-gray-600">
+            Shop our Best Sellers—customer favorites that never go out of style!
+          </p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 gap-y-6 mb-10">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="animate-pulse">
+              <div className="bg-gray-200 aspect-square rounded-lg mb-2"></div>
+              <div className="bg-gray-200 h-4 rounded mb-1"></div>
+              <div className="bg-gray-200 h-3 rounded w-2/3"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no products after loading
+  if (!productsLoading && bestSeller.length === 0) {
+    return null;
+  }
 
   const containerVariants = {
     hidden: {},
@@ -72,7 +111,7 @@ const BestSeller = () => {
         whileInView="visible"
         viewport={{ once: true, amount: 0.3 }}
         variants={containerVariants}
-          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 gap-y-6 mb-10">
+        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 gap-y-6 mb-10">
         {bestSeller.map((item) => (
           <motion.div
             key={item._id}

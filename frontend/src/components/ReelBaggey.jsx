@@ -1,73 +1,126 @@
-import React, { useContext } from 'react'
+import React, { useContext, useState, useEffect } from 'react'
 import { assets } from '../assets/frontend_assets/assets'
 import Title from './Title'
 import { ShopContext } from '../context/ShopContext'
-import ProductItem from './ProductItem'
+import ProductCard from './ProductCard'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next';
 
 const ReelBaggey = () => {
     const { t } = useTranslation();
-    const { products } = useContext(ShopContext);
+    const { backendUrl } = useContext(ShopContext);
+    
+    const [baggeyProducts, setBaggeyProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [subcategory, setSubcategory] = useState(null);
 
-    // Filter baggey products (you can adjust the filter criteria)
-    const baggeyProducts = products.filter(product =>
-        product.name.toLowerCase().includes('baggey') ||
-        product.name.toLowerCase().includes('baggy') ||
-        product.category === 'Denim'
-    );
+    useEffect(() => {
+        const fetchBaggey2Products = async () => {
+            try {
+                setLoading(true);
+                setError("");
 
-    const containerVariants = {
-        hidden: {},
-        visible: {
-            transition: {
-                staggerChildren: 0.1,
-            },
-        },
-    };
+                // First, find the subcategory with name "Baggey2"
+                const subcategoriesResponse = await fetch(
+                    `${backendUrl}/api/subcategories?isActive=true&includeDeleted=false`
+                );
+                const subcategoriesData = await subcategoriesResponse.json();
 
-    const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
-    };
+                if (subcategoriesResponse.ok && subcategoriesData.responseBody) {
+                    const subcategories = subcategoriesData.responseBody.data || [];
+                    const baggey2Subcategory = subcategories.find(
+                        sub => sub.id === 8
+                    );
+
+                    if (baggey2Subcategory) {
+                        setSubcategory(baggey2Subcategory);
+
+                        // Fetch products for the Baggey2 subcategory
+                        const productsResponse = await fetch(
+                            `${backendUrl}/api/products?subCategoryId=${baggey2Subcategory.id}&isActive=true&includeDeleted=false&page=1&pageSize=50`
+                        );
+                        const productsData = await productsResponse.json();
+
+                        if (
+                            productsResponse.ok &&
+                            Array.isArray(productsData.responseBody?.data)
+                        ) {
+                            setBaggeyProducts(productsData.responseBody.data);
+                        } else {
+                            setBaggeyProducts([]);
+                        }
+                    } else {
+                        setError("Baggey2 subcategory not found");
+                        setBaggeyProducts([]);
+                    }
+                } else {
+                    setError(subcategoriesData.message || "Failed to load subcategories");
+                }
+            } catch (err) {
+                console.error("Error fetching Baggey2 products:", err);
+                setError("Network error. Please try again.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchBaggey2Products();
+    }, [backendUrl]);
 
     return (
-        <div>
-            <div className='my-10 overflow-hidden px-4 sm:px-[2vw] md:px-[2vw] lg:px-[3vw]'>
-                <div className="text-left text-3xl py-8">
-                    <Title className='text-3xl' text1={t('REEL')} text2={t('BAGGEY_COLLECTION')} />
-                    <p className='text-left text-lg text-gray-500 mt-2'>
-                        {t('BAGGIEST_DENIM')}
-                    </p>
+        <motion.div
+            className="mx-auto px-4 sm:px-[2vw] md:px-[2vw] lg:px-[3vw] py-8"
+            initial="hidden"
+            animate="visible"
+            variants={{
+                hidden: { opacity: 0, y: 60 },
+                visible: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { duration: 0.7, ease: "easeOut" },
+                },
+            }}
+        >
+            {loading ? (
+                <div className="flex justify-center items-center h-40">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
                 </div>
-
-                {baggeyProducts.length > 0 ? (
-                    <motion.div
-                        className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-6'
-                        variants={containerVariants}
-                        initial="hidden"
-                        whileInView="visible"
-                        viewport={{ once: true, amount: 0.3 }}
-                    >
-                        {baggeyProducts.slice(0, 4).map((product) => (
-                            <motion.div key={product._id} variants={itemVariants}>
-                                <ProductItem
-                                    id={product._id}
-                                    name={product.name}
-                                    price={product.price}
-                                    finalPrice={product.finalPrice}
-                                    image={product.image}
-                                />
-                            </motion.div>
-                        ))}
-                    </motion.div>
-                ) : (
-                    <div className='text-center text-gray-500 py-8'>
-                        <p>{t('NO_BAGGEY_PRODUCTS')}</p>
+            ) : error ? (
+                <div className="text-center text-red-600 p-4 bg-red-100 rounded-md">
+                    {error}
+                </div>
+            ) : (
+                <>
+                    {/* Subcategory Header */}
+                    <div className="text-center mb-8 text-start">
+                        <h1 className="text-2xl tracking-wide mb-4 uppercase">
+                            <Title text1={t('REEL')} text2={t('BAGGEY_COLLECTION')} />
+                        </h1>
+                        <p className="text-gray-600 max-w-3xl">
+                            <p>{t('BAGGIEST_DENIM')}</p>
+                        </p>
                     </div>
-                )}
-            </div>
-        </div>
+
+
+                    {/* Products Grid */}
+                    {baggeyProducts.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                            {baggeyProducts.slice(0, 8).map((product) => (
+                                <ProductCard 
+                                    key={product.id} 
+                                    product={product} 
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center text-gray-500 my-8">
+                            <p>{t('NO_BAGGEY_PRODUCTS')}</p>
+                        </div>
+                    )}
+                </>
+            )}
+        </motion.div>
     )
 }
 

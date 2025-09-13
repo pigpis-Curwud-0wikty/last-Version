@@ -85,6 +85,7 @@ const NavbarPage = () => {
           );
 
           setCategories(categoriesWithSubcategories);
+          console.log("Categories with subcategories:", categoriesWithSubcategories);
         } else {
           setCategories([]); // fallback to prevent errors
         }
@@ -146,30 +147,34 @@ const NavbarPage = () => {
           <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-64 bg-white shadow-lg rounded-lg z-50 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-200">
             <ul className="flex flex-col py-2">
               {Array.isArray(categories) && categories.length > 0 ? (
-                categories.map((cat) => (
-                  <li key={cat.id} className="relative group/subcategory">
+                categories.filter(cat => cat.isActive !== false).map((cat) => (
+                  <li key={cat.id} className="relative group/subcategory hover:bg-gray-50" onMouseEnter={() => console.log(`Hovering category: ${cat.name}, subcategories:`, cat.subcategories)}>
                     <Link
                       to={`/category/${cat.id}`}
-                      className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 font-medium transition-colors duration-150"
+                      className="block px-6 py-3 cursor-pointer text-gray-700 font-medium transition-colors duration-200 hover:text-gray-900"
                     >
                       <div className="flex justify-between items-center">
                         <span>{cat.name}</span>
                         {Array.isArray(cat.subcategories) &&
-                          cat.subcategories.length > 0 && (
-                            <span className="text-gray-400">›</span>
+                          cat.subcategories.filter(sub => sub.isActive !== false).length > 0 && (
+                            <span className="text-gray-400 transition-transform duration-200 group-hover/subcategory:translate-x-1">›</span>
                           )}
                       </div>
                     </Link>
 
-                    {/* Subcategories */}
+                    {/* Subcategories - Only for THIS specific category */}
                     {Array.isArray(cat.subcategories) &&
-                      cat.subcategories.length > 0 && (
-                        <ul className="absolute left-full top-0 w-64 bg-white shadow-lg rounded-lg opacity-0 invisible group-hover/subcategory:opacity-100 group-hover/subcategory:visible transition-all duration-200 z-50">
-                          {cat.subcategories.map((sub) => (
+                      cat.subcategories.filter(sub => sub.isActive !== false).length > 0 && (
+                        <ul className="absolute left-full top-0 w-64 bg-white shadow-lg rounded-lg opacity-0 invisible group-hover/subcategory:opacity-100 group-hover/subcategory:visible transition-all duration-300 z-50 transform translate-x-2 group-hover/subcategory:translate-x-0 border border-gray-200">
+                          <li className="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-semibold border-b">
+                            {cat.name} Subcategories
+                          </li>
+                          {cat.subcategories.filter(sub => sub.isActive !== false).map((sub) => (
                             <li key={sub.id}>
                               <Link
                                 to={`/subcategory/${sub.id}`}
-                                className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 transition-colors duration-150"
+                                className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 transition-colors duration-200 hover:text-gray-900 hover:pl-8"
+                                onMouseEnter={() => console.log(`Hovering subcategory: ${sub.name} (belongs to ${cat.name})`)}
                               >
                                 {sub.name}
                               </Link>

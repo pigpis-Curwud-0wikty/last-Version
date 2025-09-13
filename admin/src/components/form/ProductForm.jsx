@@ -49,6 +49,7 @@ const ProductForm = ({
           type="file"
           name="mainImage"
           value={mainImage}
+          
           onChange={(e) => handleFileChange("mainImage", e.target.files[0])}
           accept="image/*"
           required={!mainImage}

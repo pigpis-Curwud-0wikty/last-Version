@@ -1,6 +1,6 @@
 import React from 'react';
-import { assets } from '../assets/frontend_assets/assets';
-
+import { assets } from '../assets/frontend_assets/assets.js'
+import { Link } from 'react-router-dom';
 const HeroBanner = () => {
   return (
     <div
@@ -14,11 +14,13 @@ const HeroBanner = () => {
       {/* Optional: Overlay for better text contrast */}
       <div className="absolute inset-0 bg-opacity-30"></div>
       <div className="relative z-10 flex flex-col items-center text-center text-white">
-        <span className="tracking-widest text-sm mb-2">FW24</span>
-        <h1 className="text-3xl md:text-5xl font-bold mb-4">Faith Jersey in Berlin</h1>
+        <span className="tracking-widest text-sm mb-2">New Arrivals</span>
+        <h1 className="text-3xl md:text-5xl font-bold mb-4">Shop Now</h1>
+        <Link to="/collection-products/8">
         <button className="bg-white text-black px-6 py-2 font-semibold hover:bg-gray-200 transition">
           SHOP NOW
         </button>
+        </Link>
       </div>
     </div>
   );

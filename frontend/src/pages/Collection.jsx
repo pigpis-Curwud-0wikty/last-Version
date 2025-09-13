@@ -37,6 +37,17 @@ const Collection = () => {
 
   const [sortOption, setSortOption] = useState("relavent");
 
+  // Debug: Log products when they change
+  useEffect(() => {
+    console.log("Products from context:", products);
+    console.log("Number of products:", products?.length || 0);
+  }, [products]);
+
+  // Debug: Log search term when it changes
+  useEffect(() => {
+    console.log("Search term:", search);
+  }, [search]);
+
   // Fetch filter options from backend
   useEffect(() => {
     const fetchFilterOptions = async () => {
@@ -77,10 +88,16 @@ const Collection = () => {
 
   // Filtering Logic
   useEffect(() => {
-    let filtered = products;
+    console.log("Starting filtering process...");
+    console.log("Available products:", products?.length || 0);
+    console.log("Search term:", search);
+    
+    let filtered = products || [];
 
     if (search) {
       const lowerSearch = search.toLowerCase();
+      console.log("Filtering by search term:", lowerSearch);
+      
       filtered = filtered.filter((item) => {
         // Check if product name matches search
         const nameMatch = item.name?.toLowerCase().includes(lowerSearch);
@@ -100,11 +117,17 @@ const Collection = () => {
           ?.toLowerCase()
           .includes(lowerSearch);
 
+        const matches = nameMatch || categoryMatch || subcategoryMatch || descriptionMatch;
+        
+        if (matches) {
+          console.log("Product matches search:", item.name);
+        }
+
         // Return true if any of the fields match the search term
-        return (
-          nameMatch || categoryMatch || subcategoryMatch || descriptionMatch
-        );
+        return matches;
       });
+
+      console.log("Products after search filter:", filtered.length);
 
       // If search matches a category name, auto-select that category in the filter
       const matchingCategories = categories.filter((category) =>
@@ -156,24 +179,28 @@ const Collection = () => {
       filtered = filtered.filter((item) =>
         selectedCategories.includes(item.category)
       );
+      console.log("Products after category filter:", filtered.length);
     }
 
     if (selectedSubCategories.length > 0) {
       filtered = filtered.filter((item) =>
         selectedSubCategories.includes(item.subCategory)
       );
+      console.log("Products after subcategory filter:", filtered.length);
     }
 
     if (selectedGenders.length > 0) {
       filtered = filtered.filter((item) =>
         selectedGenders.includes(item.gender)
       );
+      console.log("Products after gender filter:", filtered.length);
     }
 
     if (selectedFitTypes.length > 0) {
       filtered = filtered.filter((item) =>
         selectedFitTypes.includes(item.fitType)
       );
+      console.log("Products after fit type filter:", filtered.length);
     }
 
     // Apply price range filter
@@ -181,17 +208,20 @@ const Collection = () => {
       filtered = filtered.filter(
         (item) => Number(item.price) >= Number(minPrice)
       );
+      console.log("Products after min price filter:", filtered.length);
     }
 
     if (maxPrice) {
       filtered = filtered.filter(
         (item) => Number(item.price) <= Number(maxPrice)
       );
+      console.log("Products after max price filter:", filtered.length);
     }
 
     // Apply in-stock filter
     if (inStock) {
       filtered = filtered.filter((item) => item.inStock);
+      console.log("Products after in-stock filter:", filtered.length);
     }
 
     // Apply sorting
@@ -209,6 +239,7 @@ const Collection = () => {
       filtered = [...filtered].sort((a, b) => b.date - a.date);
     }
 
+    console.log("Final filtered products:", filtered.length);
     setFilterProducts(filtered);
   }, [
     search,
@@ -406,7 +437,21 @@ const Collection = () => {
 
       {/* Products Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-        {filterProducts.length > 0 ? (
+        {loading ? (
+          <div className="col-span-full text-center py-10">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-3">Loading products...</p>
+          </div>
+        ) : error ? (
+          <div className="col-span-full text-center py-10 text-red-500">
+            <p>{error}</p>
+          </div>
+        ) : !products || products.length === 0 ? (
+          <div className="col-span-full text-center py-10 text-gray-500">
+            <p>No products available. Please check your connection and try again.</p>
+            <p className="text-sm mt-2">Debug: Products array length: {products?.length || 0}</p>
+          </div>
+        ) : filterProducts.length > 0 ? (
           filterProducts.map((item) => (
             <ProductItem
               key={item._id}
@@ -417,9 +462,10 @@ const Collection = () => {
             />
           ))
         ) : (
-          <p className="col-span-full text-center text-gray-400">
-            {t("NO_PRODUCTS_MATCH")}
-          </p>
+          <div className="col-span-full text-center text-gray-400">
+            <p>{t("NO_PRODUCTS_MATCH")}</p>
+            <p className="text-sm mt-2">Debug: Total products: {products?.length || 0}, Search: "{search}"</p>
+          </div>
         )}
       </div>
     </motion.div>

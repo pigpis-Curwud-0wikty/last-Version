@@ -1,11 +1,11 @@
 import React from 'react';
 
 const Pagination = ({ currentPage, totalPages, paginate }) => {
-  if (totalPages <= 1) return null;
+  if (!Number.isFinite(totalPages) || totalPages < 1) return null;
   
   return (
     <div className="flex justify-center items-center mt-6 mb-4">
-      <nav className="flex items-center">
+      <nav className="flex items-center gap-2">
         <button
           onClick={() => paginate(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
@@ -37,6 +37,8 @@ const Pagination = ({ currentPage, totalPages, paginate }) => {
         >
           Next
         </button>
+
+        <span className="ml-3 text-sm text-gray-600">Page {currentPage} of {totalPages}</span>
       </nav>
     </div>
   );

@@ -24,6 +24,17 @@ const OrderCreate = ({ token }) => {
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [notes, setNotes] = useState("");
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    phoneNumber: "",
+    country: "",
+    state: "",
+    city: "",
+    streetAddress: "",
+    postalCode: "",
+    isDefault: true,
+    additionalNotes: "",
+  });
 
   // State for payment
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -48,15 +59,16 @@ const OrderCreate = ({ token }) => {
     iframeId: "",
   });
 
-  // State for checkout process
-  const [checkoutDone, setCheckoutDone] = useState(false);
-
-  // Fetch products on component mount
+  // Parallelize initial fetches for faster page readiness
   useEffect(() => {
-    fetchProducts();
-    fetchAddresses();
-    fetchPaymentMethods();
-    fetchPaymentProviders();
+    (async () => {
+      await Promise.all([
+        fetchProducts(),
+        fetchAddresses(),
+        fetchPaymentMethods(),
+        fetchPaymentProviders(),
+      ]);
+    })();
   }, []);
 
   // Filter products when search term changes
@@ -106,52 +118,32 @@ const OrderCreate = ({ token }) => {
     }
   };
 
-  // Fetch payment methods
+  // Fetch payment methods (prefer PaymentMethod list, fallback to Enums)
   const fetchPaymentMethods = async () => {
     try {
-      // Try the new Enums endpoint first
-      const response = await axios.get(
+      const pmResp = await axios.get(`${backendUrl}/api/PaymentMethod`, {
+        params: { isActive: true, isDeleted: false, page: 1, pageSize: 100 },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const pmList = pmResp?.data?.responseBody?.data;
+      if (Array.isArray(pmList) && pmList.length > 0) {
+        setPaymentMethods(pmList);
+        return;
+      }
+
+      const enumsResp = await axios.get(
         `${backendUrl}/api/Enums/PaymentMethods`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (
-        response &&
-        response.data &&
-        response.data.responseBody &&
-        response.data.responseBody.data
-      ) {
-        setPaymentMethods(response.data.responseBody.data);
+      const enumList = enumsResp?.data?.responseBody?.data;
+      if (Array.isArray(enumList) && enumList.length > 0) {
+        setPaymentMethods(enumList);
+        return;
       }
+      toast.error("Failed to load payment methods");
     } catch (error) {
-      console.error(
-        "Error fetching payment methods from Enums endpoint:",
-        error
-      );
-      try {
-        // Fallback to the original endpoint if the new one fails
-        const fallbackResponse = await axios.get(
-          `${backendUrl}/api/PaymentMethod`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (
-          fallbackResponse &&
-          fallbackResponse.data &&
-          fallbackResponse.data.responseBody &&
-          fallbackResponse.data.responseBody.data
-        ) {
-          setPaymentMethods(fallbackResponse.data.responseBody.data);
-        }
-      } catch (fallbackError) {
-        console.error(
-          "Error fetching payment methods from fallback endpoint:",
-          fallbackError
-        );
-        toast.error("Failed to load payment methods");
-      }
+      console.error("Error fetching payment methods:", error);
+      toast.error("Failed to load payment methods");
     }
   };
 
@@ -234,6 +226,7 @@ const OrderCreate = ({ token }) => {
         response?.data?.statuscode === 200 || response?.data?.statuscode === 0;
       if (statusOk) {
         toast.success("Payment provider added successfully");
+
         // Reset form and refresh payment providers
         setPaymentProviderForm({
           name: "",
@@ -272,7 +265,6 @@ const OrderCreate = ({ token }) => {
   const handleProductSelect = async (product) => {
     setSelectedProduct(product);
     setSelectedVariant(null); // Reset selected variant
-    console.log("Selected product:", product);
 
     try {
       // Fetch variants directly from the API
@@ -286,8 +278,6 @@ const OrderCreate = ({ token }) => {
         }
       );
 
-      console.log("Variants API response:", variantsResponse.data);
-
       // Check if we got valid variants data
       if (
         variantsResponse.data &&
@@ -300,7 +290,7 @@ const OrderCreate = ({ token }) => {
       ) {
         // Store all variants for this product
         const variants = variantsResponse.data.responseBody.data;
-        console.log(`Found ${variants.length} variants for product:`, variants);
+        console.log(`Found ${variants.length} variants for product:`);
 
         // Update the product object with the variants
         const updatedProduct = { ...product, productVariants: variants };
@@ -308,20 +298,11 @@ const OrderCreate = ({ token }) => {
 
         // Select the first variant by default
         const firstVariant = variants[0];
-        console.log("Selecting first variant:", firstVariant);
-        setSelectedVariant(firstVariant);
-
+        handleVariantSelect(firstVariant);
         toast.success(`Found ${variants.length} variant(s) for this product`);
       } else {
         // No variants found or invalid response
         console.log("No variants found or invalid response structure");
-        console.log("Response structure:", {
-          statuscode: variantsResponse.data?.statuscode,
-          hasResponseBody: !!variantsResponse.data?.responseBody,
-          hasData: !!variantsResponse.data?.responseBody?.data,
-          dataLength: variantsResponse.data?.responseBody?.data?.length,
-          dataType: typeof variantsResponse.data?.responseBody?.data,
-        });
 
         // Create a default variant
         const defaultVariant = {
@@ -348,15 +329,6 @@ const OrderCreate = ({ token }) => {
       }
     } catch (error) {
       console.error("Error fetching variants:", error);
-
-      // Log detailed error information
-      if (error.response) {
-        console.error("Error response:", {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data,
-        });
-      }
 
       // Create a default variant on error
       const defaultVariant = {
@@ -580,9 +552,6 @@ const OrderCreate = ({ token }) => {
       return;
     }
 
-    // Reset checkout state when adding new items
-    setCheckoutDone(false);
-
     try {
       // Define the request payload
       const payload = {
@@ -654,9 +623,6 @@ const OrderCreate = ({ token }) => {
       updatedCart.splice(index, 1);
       setCartItems(updatedCart);
 
-      // Reset checkout state when removing items
-      setCheckoutDone(false);
-
       // Try to sync with backend if available
       if (backendUrl && token && removedItem?.product?.id) {
         try {
@@ -713,282 +679,34 @@ const OrderCreate = ({ token }) => {
   // Check if products in cart have sufficient stock
   const checkProductAvailability = async () => {
     try {
-      // For each item in the cart, fetch the latest stock information
-      for (const item of cartItems) {
-        if (!item.product || !item.variant) continue;
-
-        // Fetch the latest variant information to get current stock
-        const latestVariant = await fetchLatestVariantStock(
-          item.product.id,
-          item.variant.id
-        );
-
-        // If we couldn't fetch the latest variant, use the cached data
-        const currentQuantity = latestVariant
-          ? latestVariant.quantity
-          : item.variant.quantity;
-
-        if (currentQuantity < item.quantity) {
-          toast.error(
-            `Not enough stock for ${item.product.name} (${item.variant.color || "Default"}). Only ${currentQuantity} available.`
+      // Check all items in parallel for speed
+      const results = await Promise.all(
+        cartItems.map(async (item) => {
+          if (!item.product || !item.variant) return { ok: true };
+          const latestVariant = await fetchLatestVariantStock(
+            item.product.id,
+            item.variant.id
           );
-          return false;
-        }
+          const currentQuantity = latestVariant
+            ? latestVariant.quantity
+            : item.variant.quantity;
+          const ok = currentQuantity >= item.quantity;
+          return { ok, item, currentQuantity };
+        })
+      );
+
+      const failed = results.find((r) => r && r.ok === false);
+      if (failed) {
+        const { item, currentQuantity } = failed;
+        toast.error(
+          `Not enough stock for ${item.product.name} (${item.variant.color || "Default"}). Only ${currentQuantity} available.`
+        );
+        return false;
       }
       return true;
     } catch (error) {
       console.error("Error checking product availability:", error);
       toast.error("Could not verify product availability");
-      return false;
-    }
-  };
-
-  // Proceed to checkout
-  const proceedToCheckout = async () => {
-    if (cartItems.length === 0) {
-      toast.error("Your cart is empty");
-      setCheckoutDone(false);
-      return false;
-    }
-
-    // Check if products have sufficient stock before checkout
-    const hasStock = await checkProductAvailability();
-    if (!hasStock) {
-      setCheckoutDone(false);
-      return false;
-    }
-
-    try {
-      // Reset checkout state
-      setCheckoutDone(false);
-
-      // Call checkout API
-      const response = await axios.post(
-        `${backendUrl}/api/Cart/checkout`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      console.log("Checkout response:", response.data);
-
-      const ok =
-        response?.data?.statuscode === 200 || response?.data?.statuscode === 0;
-      if (ok) {
-        setCheckoutDone(true);
-        toast.success("Checkout successful");
-
-        // After successful checkout, we need to re-add items to cart
-        // because the checkout process clears the cart on the server
-        try {
-          const cartRestored = await restoreCartItems();
-          if (!cartRestored) {
-            console.warn(
-              "Cart restoration had some issues, but proceeding with checkout"
-            );
-          }
-        } catch (cartError) {
-          console.error(
-            "Failed to restore cart items, but proceeding with checkout:",
-            cartError
-          );
-          // Don't block checkout process if cart restoration fails
-        }
-
-        return true;
-      } else {
-        setCheckoutDone(false);
-        toast.error(response?.data?.responseBody?.message || "Checkout failed");
-        return false;
-      }
-    } catch (error) {
-      console.error("Error during checkout:", error);
-
-      // Always set checkout as not done when there's an error
-      setCheckoutDone(false);
-
-      // Provide detailed error message
-      let errorMessage = "Could not connect to checkout service.";
-
-      if (error.response) {
-        console.log("Checkout error response:", error.response);
-        if (error.response.status === 404) {
-          errorMessage = "Checkout API unavailable.";
-        } else if (error.response.data && error.response.data.responseBody) {
-          errorMessage =
-            error.response.data.responseBody.message ||
-            "Checkout failed with server error.";
-        } else if (error.response.data && error.response.data.message) {
-          errorMessage = error.response.data.message;
-        }
-      }
-
-      toast.error(errorMessage);
-      return false;
-    }
-  };
-
-  // Restore cart items after checkout
-  const restoreCartItems = async () => {
-    try {
-      console.log("Restoring cart items after checkout...");
-
-      // Re-add each item to the cart
-      for (const item of cartItems) {
-        if (!item.product || !item.variant) continue;
-
-        // Ensure all values are properly formatted
-        const payload = {
-          productId: Number(item.product.id),
-          quantity: Number(item.quantity),
-          productVariantId: Number(item.variant.id),
-        };
-
-        const headers = {
-          "Content-Type": "application/json-patch+json",
-          Authorization: `Bearer ${token}`,
-        };
-
-        console.log("Re-adding item to cart:", payload);
-        try {
-          const response = await axios.post(
-            `${backendUrl}/api/Cart/items`,
-            payload,
-            { headers }
-          );
-          console.log("Cart item restore response:", response.data);
-        } catch (itemError) {
-          console.error(
-            "Error adding item to cart:",
-            itemError.response?.data || itemError.message
-          );
-          // Continue with other items even if one fails
-        }
-      }
-
-      console.log("Cart items restoration process completed");
-      return true;
-    } catch (error) {
-      console.error("Error restoring cart items:", error);
-      toast.error("Failed to restore cart items. Please try again.");
-      return false;
-    }
-  };
-
-  // Verify cart items are properly restored
-  const verifyCartItems = async () => {
-    try {
-      console.log("Verifying cart items...");
-
-      // Fetch current cart from server
-      const response = await axios.get(`${backendUrl}/api/Cart`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      console.log("Current cart state:", response.data);
-
-      // Check if cart has items
-      const serverCart = response.data?.responseBody?.data;
-      if (!serverCart || !serverCart.items || serverCart.items.length === 0) {
-        console.error("Server cart is empty after restoration attempt");
-
-        // Try to restore cart items again
-        console.log("Attempting to restore cart items again...");
-        await restoreCartItems();
-
-        // Check cart again
-        const retryResponse = await axios.get(`${backendUrl}/api/Cart`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const retryCart = retryResponse.data?.responseBody?.data;
-        if (!retryCart || !retryCart.items || retryCart.items.length === 0) {
-          console.error("Failed to restore cart items after retry");
-          return false;
-        }
-      }
-
-      console.log("Cart verification successful");
-      return true;
-    } catch (error) {
-      console.error("Error verifying cart items:", error);
-      return false;
-    }
-  };
-
-  // Test order creation flow
-  const testOrderCreation = async () => {
-    try {
-      toast.info("Testing order creation flow...");
-
-      // 1. Check if cart has items
-      if (cartItems.length === 0) {
-        toast.error("Cart is empty. Add items before testing.");
-        return false;
-      }
-
-      // 2. Check product availability
-      const stockAvailable = await checkProductAvailability();
-      if (!stockAvailable) {
-        toast.error("Stock check failed. Cannot proceed with test.");
-        return false;
-      } else {
-        toast.success("Stock check passed.");
-      }
-
-      // 3. Validate address
-      if (!selectedAddressId) {
-        toast.error("Address validation failed: No address selected.");
-        return false;
-      }
-
-      const selectedAddress = addresses.find(
-        (a) => String(a.id) === String(selectedAddressId)
-      );
-      if (!selectedAddress) {
-        toast.error("Address validation failed: Selected address not found.");
-        return false;
-      }
-
-      // Check required fields
-      const requiredFields = ["country", "city", "streetAddress", "postalCode"];
-      const missingFields = requiredFields.filter(
-        (field) => !selectedAddress[field]
-      );
-
-      if (missingFields.length > 0) {
-        toast.error(
-          `Address validation failed: Missing ${missingFields.join(", ")}`
-        );
-        return false;
-      } else {
-        toast.success("Address validation passed.");
-      }
-
-      // 4. Test checkout process
-      const checkoutResult = await proceedToCheckout();
-      if (!checkoutResult) {
-        toast.error("Checkout test failed.");
-        return false;
-      } else {
-        toast.success("Checkout test passed.");
-      }
-
-      toast.success(
-        "All tests passed! Order creation flow is working correctly."
-      );
-      return true;
-    } catch (error) {
-      console.error("Error during order flow test:", error);
-      toast.error("Test failed with an unexpected error.");
       return false;
     }
   };
@@ -1014,16 +732,40 @@ const OrderCreate = ({ token }) => {
       return;
     }
 
-    // Always perform checkout before creating order to ensure server state is up-to-date
-    toast.info("Checking out cart before creating order...");
-    const ok = await proceedToCheckout();
-    if (!ok) {
-      toast.error("Please checkout before creating order");
+    // Step 1: Checkout cart on the server (then order, then payment)
+    toast.info("Checking out your cart...");
+    try {
+      const coResp = await axios.post(
+        `${backendUrl}/api/Cart/checkout`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const coOk =
+        coResp?.data?.statuscode === 200 || coResp?.data?.statuscode === 0;
+      if (!coOk) {
+        const coMsg =
+          coResp?.data?.responseBody?.message || "Checkout failed";
+        toast.error(coMsg);
+        return;
+      }
+      toast.success(
+        coResp?.data?.responseBody?.message || "Checkout successful"
+      );
+    } catch (coError) {
+      console.error("Checkout API error:", coError?.response?.data || coError);
+      const coMsg =
+        coError?.response?.data?.responseBody?.message ||
+        coError?.message ||
+        "Could not complete checkout";
+      toast.error(coMsg);
       return;
     }
 
-    // Small delay to ensure cart restoration has time to complete
-    await new Promise((resolve) => setTimeout(resolve, 500));
     // Validate address data
     if (!selectedAddressId) {
       toast.error("Please select a delivery address");
@@ -1053,23 +795,26 @@ const OrderCreate = ({ token }) => {
 
     setLoading(true);
     try {
-      // Build the payload according to the API schema
-      const selectedAddress = addresses.find(
-        (a) => String(a.id) === String(selectedAddressId)
-      );
-
-      // Ensure addressId is a valid integer
-      const addressId = parseInt(selectedAddressId);
-      if (isNaN(addressId)) {
-        toast.error("Invalid address ID");
+      // Resolve selected payment method id for Order API
+      const selectedMethodForOrder = paymentMethods.find((method) => {
+        const selStr = (selectedPaymentMethod ?? "").toString().toLowerCase();
+        const byName = (method?.name ?? "").toString().toLowerCase() === selStr;
+        const byMethodName = (method?.paymentMethod ?? "").toString().toLowerCase() === selStr;
+        const selNum = Number(selectedPaymentMethod);
+        const byId = Number(method?.id) === selNum;
+        return byName || byMethodName || byId;
+      });
+      const paymentMethodIdForOrder = Number(selectedMethodForOrder?.id);
+      if (!Number.isFinite(paymentMethodIdForOrder) || paymentMethodIdForOrder <= 0) {
+        toast.error("Invalid payment method selection for order");
         return;
       }
 
       // Create order payload according to API schema
       const orderData = {
-        addressId: addressId,
+        addressId: parseInt(selectedAddressId),
         notes: notes || "",
-        paymentMethodId: parseInt(selectedPaymentMethod),
+        paymentMethodId: paymentMethodIdForOrder,
       };
 
       console.log("Payload to /api/Order:", orderData);
@@ -1126,7 +871,7 @@ const OrderCreate = ({ token }) => {
         // Process payment for the created order
         if (orderId) {
           console.log("Processing payment for order ID:", orderId);
-          const paymentSuccess = await processPayment(orderId);
+          const paymentSuccess = await processPayment(orderId, orderNumber);
           if (paymentSuccess) {
             // Navigate to orders page after successful payment
             navigate("/orders");
@@ -1145,7 +890,7 @@ const OrderCreate = ({ token }) => {
     } catch (error) {
       // Surface useful diagnostics
       const status = error?.response?.status;
-      const apiBody = error?.response?.data;
+      const apiBody = error?.response?.data || {};
       console.error("Error creating order:", { status, apiBody, error });
 
       if (status === 500) {
@@ -1163,7 +908,9 @@ const OrderCreate = ({ token }) => {
         } else if (errorDetails.length > 0) {
           toast.error(errorDetails[0]);
         } else {
-          toast.error("Server error occurred while placing the order");
+          toast.error(
+            "Server error occurred while placing the order. Please try again later."
+          );
         }
       } else if (status === 400) {
         // Handle validation errors
@@ -1216,9 +963,14 @@ const OrderCreate = ({ token }) => {
     setLoading(true);
     try {
       // Get the selected payment method details
-      const selectedMethod = paymentMethods.find(
-        (method) => method.id === selectedPaymentMethod
-      );
+      const selectedMethod = paymentMethods.find((method) => {
+        const selStr = (selectedPaymentMethod ?? "").toString().toLowerCase();
+        const byName = (method?.name ?? "").toString().toLowerCase() === selStr;
+        const byMethodName = (method?.paymentMethod ?? "").toString().toLowerCase() === selStr;
+        const selNum = Number(selectedPaymentMethod);
+        const byId = Number(method?.id) === selNum;
+        return byName || byMethodName || byId;
+      });
 
       if (!selectedMethod) {
         toast.error("Selected payment method not found");
@@ -1280,7 +1032,7 @@ const OrderCreate = ({ token }) => {
   };
 
   // Process payment for an order
-  const processPayment = async (orderId) => {
+  const processPayment = async (orderId, orderNumberFromCreate = null) => {
     if (!selectedPaymentMethod) {
       toast.error("Please select a payment method");
       return false;
@@ -1322,23 +1074,73 @@ const OrderCreate = ({ token }) => {
     setLoading(true);
     try {
       // Get the selected payment method details
-      const selectedMethod = paymentMethods.find(
-        (method) => method.id === parseInt(selectedPaymentMethod)
-      );
+      const selectedMethod = paymentMethods.find((method) => {
+        const selStr = (selectedPaymentMethod ?? "").toString().toLowerCase();
+        const byName = (method?.name ?? "").toString().toLowerCase() === selStr;
+        const byMethodName = (method?.paymentMethod ?? "").toString().toLowerCase() === selStr;
+        const selNum = Number(selectedPaymentMethod);
+        const byId = Number(method?.id) === selNum;
+        return byName || byMethodName || byId;
+      });
 
       if (!selectedMethod) {
         toast.error("Selected payment method not found");
         return false;
       }
 
-      // Derive numeric payment method expected by API
-      // Use the payment method ID from the list (API expects numeric method)
-      const methodValue = Number(selectedMethod.id);
+      // Resolve and validate numeric payment method against Enums API (map name -> id)
+      let methodValue = NaN;
+      let enumList = [];
+      try {
+        const enumResp = await axios.get(
+          `${backendUrl}/api/Enums/PaymentMethods`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        enumList = enumResp?.data?.responseBody?.data || [];
+      } catch (e) {
+        console.warn("Could not load payment method enums:", e?.response?.data || e.message);
+      }
 
-      if (typeof methodValue !== "number" || Number.isNaN(methodValue)) {
-        toast.error("Could not resolve a numeric payment method value");
+      const selectedName = (
+        selectedMethod?.paymentMethod || selectedMethod?.name || selectedPaymentMethod
+      )
+        .toString()
+        .toLowerCase();
+
+      const enumMatch = enumList.find(
+        (e) => (e.name || e.Name || "").toString().toLowerCase() === selectedName
+      );
+      if (enumMatch) {
+        methodValue = Number(enumMatch.id);
+      }
+
+      // If not matched by name, and selected value is numeric and exists in enum ids, accept it
+      if (!Number.isFinite(methodValue) || methodValue <= 0) {
+        const selNum = Number(selectedPaymentMethod);
+        const allowed = new Set(
+          enumList
+            .map((e) => Number(e.id))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        );
+        if (Number.isFinite(selNum) && allowed.has(selNum)) {
+          methodValue = selNum;
+        }
+      }
+
+      if (!Number.isFinite(methodValue) || methodValue <= 0) {
+        console.error("Could not resolve valid payment method.", {
+          selectedPaymentMethod,
+          selectedMethod,
+          enumList,
+        });
+        toast.error("Invalid payment method selection. Please reselect a method.");
         return false;
       }
+
+      console.log("Resolved payment method value:", methodValue, {
+        selectedPaymentMethod,
+        selectedMethod,
+      });
 
       // Validate order ID format and existence (string required by API schema)
       const orderIdNum = Number(orderId);
@@ -1350,10 +1152,47 @@ const OrderCreate = ({ token }) => {
         return false;
       }
 
-      // Create payment payload according to API schema
-      // API expects orderId as a string according to schema
+      // We'll resolve orderNumber, required by Payment API
+      let orderNumber = orderNumberFromCreate || null;
+
+      // Verify order exists before processing payment
+      try {
+        const orderCheckResponse = await axios.get(
+          `${backendUrl}/api/Order/${String(orderIdNum)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (
+          orderCheckResponse?.data?.statuscode !== 200 &&
+          orderCheckResponse?.data?.statuscode !== 0
+        ) {
+          console.error("Order not found in database:", orderIdNum);
+          toast.error("Order not found. Cannot process payment.");
+          return false;
+        }
+        // Try to extract orderNumber if not provided
+        if (!orderNumber) {
+          const orderCheckData = orderCheckResponse?.data?.responseBody?.data;
+          const orderCheckInfo = orderCheckData?.order || orderCheckData;
+          orderNumber = orderCheckInfo?.orderNumber || String(orderIdNum);
+        }
+      } catch (error) {
+        console.error("Error verifying order:", error);
+        toast.error("Could not verify order. Please try again later.");
+        return false;
+      }
+
+      if (!orderNumber) {
+        toast.error("Order number is required but could not be resolved.");
+        return false;
+      }
+
+      // Create payment payload according to API schema (uses orderNumber)
       const paymentData = {
-        orderId: String(orderIdNum),
+        orderNumber: String(orderNumber),
         paymentDetails: {
           walletPhoneNumber: normalizedPhone,
           paymentMethod: methodValue,
@@ -1374,30 +1213,6 @@ const OrderCreate = ({ token }) => {
       }
 
       console.log("Payload to /api/Payment:", paymentData);
-
-      // Verify order exists before processing payment
-      try {
-        const orderCheckResponse = await axios.get(
-          `${backendUrl}/api/Order/${String(orderIdNum)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        if (
-          orderCheckResponse?.data?.statuscode !== 200 &&
-          orderCheckResponse?.data?.statuscode !== 0
-        ) {
-          console.error("Order not found in database:", orderIdNum);
-          toast.error("Order not found. Cannot process payment.");
-          return false;
-        }
-      } catch (error) {
-        console.error("Error verifying order:", error);
-        toast.error("Could not verify order. Please try again later.");
-        return false;
-      }
 
       // Call the payment API
       try {
@@ -1435,19 +1250,27 @@ const OrderCreate = ({ token }) => {
         const responseBody = response.data.responseBody || {};
         const paymentInfo = responseBody.data || {};
 
-        // Check if redirect is required
-        if (paymentInfo.isRedirectRequired && paymentInfo.redirectUrl) {
+        // If redirect URL is provided, navigate to it (prefer same-tab) and stop further navigation
+        if (paymentInfo?.redirectUrl) {
+          const url = paymentInfo.redirectUrl;
+          console.log("Redirect URL provided by payment:", url);
           toast.info("Redirecting to payment gateway...");
-          window.open(paymentInfo.redirectUrl, "_blank");
+          try {
+            window.location.assign(url); // same-tab redirect
+          } catch (e) {
+            console.warn("Same-tab redirect failed, opening new tab:", e);
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+          // Prevent caller from navigating to /orders while redirecting
+          return false;
         } else {
           const successMessage =
-            paymentInfo.message ||
-            responseBody.message ||
+            paymentInfo?.message ||
+            responseBody?.message ||
             "Payment processed successfully";
           toast.success(successMessage);
+          return true;
         }
-
-        return true;
       } catch (error) {
         console.error(
           "Payment API error:",
@@ -1504,8 +1327,66 @@ const OrderCreate = ({ token }) => {
     return cartItems.reduce((total, item) => total + item.totalPrice, 0);
   };
 
+  // Handle new address form changes
+  const handleAddressFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setAddressForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  // Submit new customer address to API and select it
+  const submitNewAddress = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      const payload = { ...addressForm };
+      const resp = await axios.post(`${backendUrl}/api/CustomerAddress`, payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+
+      const ok = resp?.data?.statuscode === 201 || resp?.data?.statuscode === 0 || resp?.status === 201;
+      const newAddr = resp?.data?.responseBody?.data;
+      if (ok && newAddr?.id != null) {
+        // Update local list and select new address
+        setAddresses((prev) => [newAddr, ...prev]);
+        setSelectedAddressId(String(newAddr.id));
+        toast.success(resp?.data?.responseBody?.message || "Address added successfully");
+        setShowAddAddress(false);
+        setAddressForm({
+          phoneNumber: "",
+          country: "",
+          state: "",
+          city: "",
+          streetAddress: "",
+          postalCode: "",
+          isDefault: true,
+          additionalNotes: "",
+        });
+      } else {
+        const msg = resp?.data?.responseBody?.message || "Failed to add address";
+        toast.error(msg);
+      }
+    } catch (error) {
+      console.error("Error adding customer address:", error?.response?.data || error);
+      const msg =
+        error?.response?.data?.responseBody?.errors?.messages?.[0] ||
+        error?.response?.data?.responseBody?.message ||
+        error?.message ||
+        "Failed to add address";
+      toast.error(msg);
+    }
+  };
+
   // Render product selection step
   const renderProductSelection = () => {
+    // Helper: consider a variant Active if its stock quantity > 0
+    const isVariantInStock = (variant) => Number(variant?.quantity || 0) > 0;
+
     return (
       <div className="space-y-6">
         {/* Search bar */}
@@ -1592,7 +1473,7 @@ const OrderCreate = ({ token }) => {
                         ? variant.size
                         : variant.size || "N/A"}{" "}
                       (Stock: {variant.quantity || 0}){" "}
-                      {!variant.isActive ? "- Inactive" : ""}
+                      {isVariantInStock(variant) ? "- Active" : "- Inactive"}
                     </option>
                   ))}
                 </select>
@@ -1644,9 +1525,9 @@ const OrderCreate = ({ token }) => {
                       <div className="flex items-center">
                         <strong className="w-24">Status:</strong>
                         <span
-                          className={`px-3 py-1 rounded ${selectedVariant.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                          className={`px-3 py-1 rounded ${isVariantInStock(selectedVariant) ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
                         >
-                          {selectedVariant.isActive ? "Active" : "Inactive"}
+                          {isVariantInStock(selectedVariant) ? "Active" : "Inactive"}
                         </span>
                       </div>
                     </div>
@@ -1843,11 +1724,16 @@ const OrderCreate = ({ token }) => {
         {/* Cart actions */}
         <div className="flex justify-end mt-6 pt-4 border-t">
           <button
-            onClick={proceedToCheckout}
-            disabled={cartItems.length === 0 || loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            onClick={placeOrder}
+            disabled={
+              !selectedAddressId ||
+              loading ||
+              !selectedPaymentMethod ||
+              cartItems.length === 0
+            }
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {loading ? "Processing..." : "Complete Checkout"}
+            {loading ? "Processing..." : "Place Order"}
           </button>
         </div>
       </div>
@@ -1863,6 +1749,57 @@ const OrderCreate = ({ token }) => {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Delivery Address
           </label>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-600">Choose an existing address or add a new one.</span>
+            <button
+              type="button"
+              onClick={() => setShowAddAddress((s) => !s)}
+              className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {showAddAddress ? "Close" : "Add Address"}
+            </button>
+          </div>
+
+          {showAddAddress && (
+            <form onSubmit={submitNewAddress} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 mb-4 border rounded-md bg-gray-50">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Phone Number</label>
+                <input name="phoneNumber" value={addressForm.phoneNumber} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" placeholder="e.g. +201234567890" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Country</label>
+                <input name="country" value={addressForm.country} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">State</label>
+                <input name="state" value={addressForm.state} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">City</label>
+                <input name="city" value={addressForm.city} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">Street Address</label>
+                <input name="streetAddress" value={addressForm.streetAddress} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" placeholder="Street, building, apartment" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Postal Code</label>
+                <input name="postalCode" value={addressForm.postalCode} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isDefault" name="isDefault" checked={!!addressForm.isDefault} onChange={handleAddressFormChange} />
+                <label htmlFor="isDefault" className="text-sm text-gray-700">Set as default</label>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">Additional Notes</label>
+                <textarea name="additionalNotes" value={addressForm.additionalNotes} onChange={handleAddressFormChange} className="w-full border rounded px-2 py-1" rows={2} />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowAddAddress(false)} className="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-800 hover:bg-gray-300">Cancel</button>
+                <button type="submit" className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700">Save Address</button>
+              </div>
+            </form>
+          )}
           {addresses.length === 0 ? (
             <p className="text-red-500">
               No addresses available. Please add an address first.
@@ -1893,11 +1830,7 @@ const OrderCreate = ({ token }) => {
                         )}
                       </div>
                       <div
-                        className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                          isSelected
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-700"
-                        }`}
+                        className={`ml-2 text-xs px-2 py-0.5 rounded ${(selectedAddressId === address.id ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-700")}`}
                       >
                         {isSelected ? "Selected" : "Select"}
                       </div>
@@ -1972,20 +1905,6 @@ const OrderCreate = ({ token }) => {
             </div>
           </div>
         </div>
-
-        {/* Checkout status */}
-        <div className="mt-6 pt-4 border-t">
-          <div className="flex items-center mb-4">
-            <div
-              className={`w-4 h-4 rounded-full mr-2 ${checkoutDone ? "bg-green-500" : "bg-gray-300"}`}
-            ></div>
-            <span
-              className={`${checkoutDone ? "text-green-600 font-medium" : "text-gray-500"}`}
-            >
-              {checkoutDone ? "Checkout completed" : "Checkout not completed"}
-            </span>
-          </div>
-        </div>
       </div>
     );
   };
@@ -2006,16 +1925,23 @@ const OrderCreate = ({ token }) => {
                     type="radio"
                     id={`payment-${method.id}`}
                     name="paymentMethod"
-                    value={method.id}
-                    checked={selectedPaymentMethod === method.id}
-                    onChange={() => setSelectedPaymentMethod(method.id)}
+                    value={method.paymentMethod ?? method.name ?? method.id}
+                    checked={
+                      selectedPaymentMethod ===
+                      (method.paymentMethod ?? method.name ?? method.id)
+                    }
+                    onChange={() =>
+                      setSelectedPaymentMethod(
+                        method.paymentMethod ?? method.name ?? method.id
+                      )
+                    }
                     className="mr-2"
                   />
                   <label
                     htmlFor={`payment-${method.id}`}
                     className="flex-grow cursor-pointer"
                   >
-                    {method.name} - {method.paymentMethod}
+                    {method.name || method.paymentMethod} - {method.paymentMethod || method.name}
                   </label>
                 </div>
               ))}
@@ -2074,8 +2000,7 @@ const OrderCreate = ({ token }) => {
               !selectedAddressId ||
               loading ||
               !selectedPaymentMethod ||
-              cartItems.length === 0 ||
-              !checkoutDone
+              cartItems.length === 0
             }
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
@@ -2263,8 +2188,6 @@ const OrderCreate = ({ token }) => {
             </div>
           </div>
         </div>
-
-        {/* Payment selection is now part of the single-page layout */}
       </div>
     );
   };

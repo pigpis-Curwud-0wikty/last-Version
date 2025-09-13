@@ -747,10 +747,18 @@ const API = {
     // Add a variant to a product
     add: async (productId, variantData, token) => {
       try {
+        // API expects an array of variants; wrap single object if needed
+        const payload = Array.isArray(variantData) ? variantData : [variantData];
         const response = await axios.post(
           `${backendUrl}/api/Products/${productId}/Variants`,
-          variantData,
-          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json-patch+json", Accept: "text/plain" } }
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          }
         );
         return response.data;
       } catch (error) {

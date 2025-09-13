@@ -36,8 +36,8 @@ const FormInput = ({
           >
             <option value="">{placeholder || `Select ${label}`}</option>
             {options &&
-              options.map((option) => (
-                <option key={option.id || option.value} value={option.id || option.value}>
+              options.map((option , key) => (
+                <option key={option.id || option.value || key} value={option.id || option.value}>
                   {option.name || option.label}
                 </option>
               ))}

@@ -16,6 +16,7 @@ const PlaceOrder = () => {
     getCartAmount,
     delivery_fee,
     products,
+    getCartCount
   } = useContext(ShopContext);
 
   const [addresses, setAddresses] = useState([]);
@@ -23,7 +24,10 @@ const PlaceOrder = () => {
   const [showAddAddressForm, setShowAddAddressForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState(null);
-
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  const [walletPhoneNumber, setWalletPhoneNumber] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
 
   const [addressFormData, setAddressFormData] = useState({
     phoneNumber: "",
@@ -53,6 +57,29 @@ const PlaceOrder = () => {
     }
   };
 
+  // Fetch payment methods from API
+  const fetchPaymentMethods = async () => {
+    try {
+      const response = await axios.get(`${backendUrl}/api/PaymentMethod`, {
+        params: {
+          isActive: true,
+          isDeleted: false,
+          page: 1,
+          pageSize: 50
+        }
+      });
+      const methods = response.data.responseBody?.data || [];
+      setPaymentMethods(methods);
+      
+      // Auto-select first payment method
+      if (methods.length > 0) {
+        setSelectedPaymentMethod(methods[0].id);
+      }
+    } catch (error) {
+      console.error("Error fetching payment methods:", error);
+      toast.error("Failed to load payment methods");
+    }
+  };
 
   const addAddress = async (addressData) => {
     const response = await axios.post(`${backendUrl}/api/CustomerAddress`, addressData, {
@@ -66,7 +93,6 @@ const PlaceOrder = () => {
     }
   };
 
-
   const updateAddress = async (addressId, addressData) => {
     const response = await axios.put(`${backendUrl}/api/CustomerAddress/${addressId}`, addressData, {
       headers: { Authorization: `Bearer ${token}` }
@@ -77,9 +103,9 @@ const PlaceOrder = () => {
     }
   };
 
-
   useEffect(() => {
     fetchAddresses();
+    fetchPaymentMethods();
   }, []);
 
   const onChangeHandler = (e) => {
@@ -151,57 +177,198 @@ const PlaceOrder = () => {
       toast.error("Please select a delivery address");
       return;
     }
+    if (!selectedPaymentMethod) {
+      toast.error("Please select a payment method");
+      return;
+    }
+
+    // Check if user has items in cart
+    const cartCount = getCartCount();
+    if (cartCount === 0) {
+      toast.error("Your cart is empty. Please add items before placing an order.");
+      setIsLoading(false);
+      return;
+    }
+    console.log("Cart count:", cartCount);
+    console.log("Cart items:", cartItems);
 
     setIsLoading(true);
     try {
+      // Step 1: Create Order
+      console.log("Selected address ID (raw):", selectedAddressId);
+      console.log("Selected address ID type:", typeof selectedAddressId);
+      
       const orderData = {
-        addressId: selectedAddressId,   // API محتاج الـ id بس
-        notes: "Please deliver fast"    // تقدر تحط ملاحظة من الفورم بعدين
+        addressId: parseInt(selectedAddressId), // Ensure it's an integer
+        notes: paymentNotes || "Order placed via website"
       };
 
-      console.log("Submitting order:", orderData);
-      console.log("Token being used:", token);
-      console.log("Backend URL:", backendUrl);
+      console.log("Submitting order data:", JSON.stringify(orderData, null, 2));
+      console.log("Request headers:", {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      });
 
-            const response = await axios.post(
-         `${backendUrl}/api/Order`,
-              orderData,
-         {
-           headers: {
-             Authorization: `Bearer ${token}`,
-             "Content-Type": "application/json",
-           },
-         }
-       );
+      const orderResponse = await axios.post(
+        `${backendUrl}/api/Order`,
+        orderData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-       console.log("Order response:", response.data);
+      console.log("Order response:", orderResponse.data);
 
-       if (response.data.statuscode === 200) {
-              setCartItems({});
-              navigate("/orders");
-         toast.success("Order placed successfully!");
-            } else {
-         toast.error(response.data.responseBody?.message || "Failed to place order");
-       }
-         } catch (error) {
-       console.error("Error placing order:", error.response?.data || error.message);
-       
-       if (error.response?.status === 403) {
-         toast.error("Authentication failed. Please login again.");
-         // Optionally redirect to login
-         // navigate("/login");
-       } else if (error.response?.status === 400) {
-         toast.error("Invalid order data. Please check your address selection.");
-       } else {
-         toast.error("Failed to place order. Please try again.");
-       }
-     } finally {
+      if (orderResponse.data.statuscode === 201 || orderResponse.data.statuscode === 200) {
+        const orderData = orderResponse.data.responseBody?.data;
+        const orderNumber = orderData?.order?.orderNumber;
+        
+        console.log("Order created successfully. Order data:", orderData);
+        console.log("Order number:", orderNumber);
+        
+        if (!orderNumber) {
+          console.error("Order number missing from response:", orderData);
+          throw new Error("Order number not received from server");
+        }
+
+        toast.success("Order created successfully! Processing payment...");
+
+        // Find the selected payment method details for debugging
+        const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod);
+        console.log("Selected payment method:", selectedMethod);
+        console.log("Selected payment method ID:", selectedPaymentMethod);
+        
+        // Validate payment method against Enums API to get correct enum value
+        let methodValue = NaN;
+        try {
+          const enumResp = await axios.get(
+            `${backendUrl}/api/Enums/PaymentMethods`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const enumList = enumResp?.data?.responseBody?.data || [];
+          console.log("Payment method enums:", enumList);
+          
+          // Try to match by payment method name
+          const selectedName = (selectedMethod?.paymentMethod || "").toString().toLowerCase();
+          const enumMatch = enumList.find(
+            (e) => (e.name || e.Name || "").toString().toLowerCase() === selectedName
+          );
+          
+          if (enumMatch) {
+            methodValue = Number(enumMatch.id);
+          } else {
+            // If not matched by name, try to use the ID directly if it exists in enum ids
+            const selNum = Number(selectedPaymentMethod);
+            const allowed = new Set(
+              enumList
+                .map((e) => Number(e.id))
+                .filter((n) => Number.isFinite(n) && n > 0)
+            );
+            if (Number.isFinite(selNum) && allowed.has(selNum)) {
+              methodValue = selNum;
+            }
+          }
+          
+          if (!Number.isFinite(methodValue) || methodValue <= 0) {
+            console.error("Could not resolve valid payment method.", {
+              selectedPaymentMethod,
+              selectedMethod,
+              enumList
+            });
+            toast.error("Invalid payment method selected. Please try again.");
+            return;
+          }
+          
+          console.log("Resolved payment method value:", methodValue, {
+            selectedPaymentMethod,
+            selectedMethod,
+          });
+          
+        } catch (error) {
+          console.error("Error fetching payment method enums:", error);
+          toast.error("Failed to validate payment method. Please try again.");
+          return;
+        }
+        
+        // Step 2: Process Payment
+        const paymentData = {
+          orderNumber: orderNumber,
+          paymentDetails: {
+            walletPhoneNumber: walletPhoneNumber || "",
+            paymentMethod: methodValue, // Use validated enum value
+            currency: "USD",
+            notes: paymentNotes || ""
+          }
+        };
+
+        console.log("Processing payment with data:", JSON.stringify(paymentData, null, 2));
+
+        const paymentResponse = await axios.post(
+          `${backendUrl}/api/Payment`,
+          paymentData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        console.log("Payment response:", paymentResponse.data);
+
+        if (paymentResponse.data.statuscode === 200) {
+          const paymentData = paymentResponse.data.responseBody?.data;
+          
+          console.log("Payment successful. Payment data:", paymentData);
+          
+          // Clear cart on successful payment
+          setCartItems({});
+          
+          if (paymentData?.isRedirectRequired && paymentData?.redirectUrl) {
+            console.log("Redirecting to payment URL:", paymentData.redirectUrl);
+            toast.success("Redirecting to payment gateway...");
+            
+            // Store order info in localStorage for return handling
+            localStorage.setItem('pendingOrderNumber', orderNumber);
+            localStorage.setItem('paymentRedirectTime', Date.now().toString());
+            
+            // Add return URL parameter if the payment gateway supports it
+            const returnUrl = `${window.location.origin}/orders`;
+            const separator = paymentData.redirectUrl.includes('?') ? '&' : '?';
+            const redirectUrlWithReturn = `${paymentData.redirectUrl}${separator}return_url=${encodeURIComponent(returnUrl)}`;
+            
+            window.location.href = redirectUrlWithReturn;
+          } else {
+            console.log("Payment completed without redirect");
+            toast.success("Payment processed successfully!");
+            navigate("/orders");
+          }
+        } else {
+          console.error("Payment failed with status:", paymentResponse.data.statuscode);
+          toast.error(paymentResponse.data.responseBody?.message || "Payment failed");
+        }
+      } else {
+        console.error("Order creation failed with status:", orderResponse.data.statuscode);
+        toast.error(orderResponse.data.responseBody?.message || "Failed to create order");
+      }
+    } catch (error) {
+      console.error("Error placing order:", error.response?.data || error.message);
+      console.error("Full error object:", error);
+      
+      if (error.response?.status === 403) {
+        toast.error("Authentication failed. Please login again.");
+      } else if (error.response?.status === 400) {
+        toast.error("Invalid order data. Please check your information.");
+      } else {
+        toast.error(error.response?.data?.responseBody?.message || "Failed to process order. Please try again.");
+      }
+    } finally {
       setIsLoading(false);
     }
   };
-
-
-
 
   // Animation variants
   const sectionVariants = { hidden: { opacity: 0, y: 50 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } } };
@@ -225,7 +392,7 @@ const PlaceOrder = () => {
                 Select Delivery Address
               </label>
               {addresses.map((address) => (
-          <motion.div
+                <motion.div
                   key={address.id}
                   className={`border rounded-md p-3 transition-colors ${selectedAddressId === address.id
                     ? "border-green-500 bg-green-50"
@@ -290,7 +457,6 @@ const PlaceOrder = () => {
               ))}
             </motion.div>
 
-
             <motion.div variants={itemVariants}>
               <button type="button" onClick={() => {
                 if (showAddAddressForm) {
@@ -341,13 +507,75 @@ const PlaceOrder = () => {
                     {editingAddressId ? "Update Address" : "Add Address"}
                   </motion.button>
                 </form>
-            </motion.div>
+              </motion.div>
             )}
           </motion.div>
         </motion.div>
 
         {/* Right - Order Summary */}
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} variants={paymentVariants} className="mt-8 p-3">
+          {/* Payment Method Selection */}
+          <motion.div variants={sectionVariants} className="mb-8">
+            <Title text1={"PAYMENT"} text2={"METHOD"} />
+            <div className="mt-4 space-y-3">
+              {paymentMethods.map((method) => (
+                <div
+                  key={method.id}
+                  className={`border rounded-md p-3 cursor-pointer transition-colors ${
+                    selectedPaymentMethod === method.id
+                      ? "border-green-500 bg-green-50"
+                      : "border-gray-300 hover:border-gray-400"
+                    }`}
+                >
+                  <div
+                    onClick={() => setSelectedPaymentMethod(method.id)}
+                    className="cursor-pointer"
+                  >
+                    <p className="font-medium">{method.name}</p>
+                    <p className="text-sm text-gray-500">{method.paymentMethod}</p>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border-2 ${
+                    selectedPaymentMethod === method.id
+                      ? "border-green-500 bg-green-500"
+                      : "border-gray-300"
+                    }`}>
+                    {selectedPaymentMethod === method.id && (
+                      <div className="w-full h-full rounded-full bg-white scale-50"></div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Wallet Phone Number (if needed) */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Wallet Phone Number (Optional)
+              </label>
+              <input
+                type="tel"
+                value={walletPhoneNumber}
+                onChange={(e) => setWalletPhoneNumber(e.target.value)}
+                className="border border-gray-300 rounded-md px-3.5 py-1.5 w-full"
+                placeholder="Enter wallet phone number"
+              />
+            </div>
+            
+            {/* Payment Notes */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Notes (Optional)
+              </label>
+              <textarea
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                className="border border-gray-300 rounded-md px-3.5 py-1.5 w-full"
+                placeholder="Add any payment notes"
+                rows="2"
+              />
+            </div>
+          </motion.div>
+
           <motion.div variants={sectionVariants} className="mt-8 min-w-80">
             <CartTotal />
           </motion.div>
@@ -358,12 +586,13 @@ const PlaceOrder = () => {
                 whileHover={{ scale: selectedAddressId ? 1.01 : 1 }}
                 whileTap={{ scale: selectedAddressId ? 0.95 : 1 }}
                 onClick={onSubmitHandler}
-                disabled={!selectedAddressId || isLoading}
-                className={`px-16 py-3 uppercase font-medium transition-all duration-300 ${selectedAddressId && !isLoading ? "bg-black text-white cursor-pointer hover:bg-white hover:text-black border border-black" : "bg-gray-300 text-gray-500 cursor-not-allowed border border-gray-300"}`}
+                disabled={!selectedAddressId || !selectedPaymentMethod || isLoading}
+                className={`px-16 py-3 uppercase font-medium transition-all duration-300 ${selectedAddressId && selectedPaymentMethod && !isLoading ? "bg-black text-white cursor-pointer hover:bg-white hover:text-black border border-black" : "bg-gray-300 text-gray-500 cursor-not-allowed border border-gray-300"}`}
               >
-                {isLoading ? "Processing..." : "Place Order"}
+                {isLoading ? "Processing..." : "Place Order & Pay"}
               </motion.button>
-              {!selectedAddressId && <p className="text-red-500 text-sm mt-2">Please select a delivery address to continue</p>}
+              {!selectedAddressId && <p className="text-red-500 text-sm mt-2">Please select a delivery address</p>}
+              {!selectedPaymentMethod && <p className="text-red-500 text-sm mt-2">Please select a payment method</p>}
             </motion.div>
           </motion.div>
         </motion.div>

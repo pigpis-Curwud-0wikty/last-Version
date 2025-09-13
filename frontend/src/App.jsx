@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer, toast } from 'react-toastify';
 import Home from "./pages/Home";
@@ -31,11 +31,23 @@ import CollectionProducts from "./pages/CollectionProducts";
 import RequestPasswordReset from "./pages/RequestPasswordReset";  
 import ScrollToTopButton from "./components/ScrollToTopButton";
 
+// Component to scroll to top on route change
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  
+  return null;
+};
+
 const App = () => {
   const location = useLocation();
   return (
     <>
       <div>
+        <ScrollToTop />
         {location.pathname === '/' ? <Navbar /> : <NavbarPage />}
         <ToastContainer />
         <SearchBar />

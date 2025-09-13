@@ -7,13 +7,24 @@ import { useTranslation } from 'react-i18next';
 
 const LatestCollection = () => {
   const { t } = useTranslation();
-  const { products } = useContext(ShopContext);
+  const { products, productsLoading } = useContext(ShopContext);
   const [latestProducts, setLatestProducts] = useState([]);
 
   useEffect(() => {
-    // Ensure products is an array and has items before slicing
+    // Filter active products and get the latest 8 by creation date or ID
     if (Array.isArray(products) && products.length > 0) {
-      setLatestProducts(products.slice(products.length - 8, products.length));
+      const activeProducts = products.filter(product => product.isActive === true);
+      
+      // Sort by ID descending to get the most recently added products
+      const sortedProducts = activeProducts.sort((a, b) => {
+        // Try to sort by numeric ID (most recent first)
+        const idA = parseInt(a._id) || 0;
+        const idB = parseInt(b._id) || 0;
+        return idB - idA;
+      });
+      
+      // Take the first 8 (most recent)
+      setLatestProducts(sortedProducts.slice(0, 8));
     }
   }, [products]);
 
@@ -31,8 +42,31 @@ const LatestCollection = () => {
     visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   };
 
-  // Do not render the component if there are no products to show
-  if (latestProducts.length === 0) {
+  // Show loading state while products are being fetched
+  if (productsLoading) {
+    return (
+      <div className="my-10 overflow-hidden px-4 sm:px-[2vw] md:px-[2vw] lg:px-[3vw]">
+        <div className="text-left py-8 text-3xl">
+          <Title text1={t('LATEST')} text2={t('COLLECTION')} />
+          <p className="text-xs sm:text-sm md:text-base text-gray-600">
+            Discover our Latest Collection, where fresh designs meet modern trends.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 gap-y-6">
+          {[...Array(8)].map((_, index) => (
+            <div key={index} className="animate-pulse">
+              <div className="bg-gray-200 aspect-square rounded-lg mb-2"></div>
+              <div className="bg-gray-200 h-4 rounded mb-1"></div>
+              <div className="bg-gray-200 h-3 rounded w-2/3"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Do not render the component if there are no products to show after loading
+  if (!productsLoading && latestProducts.length === 0) {
     return null;
   }
 

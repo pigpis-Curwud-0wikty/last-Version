@@ -4,11 +4,46 @@ import { currency } from '../App';
 const ViewOrderModal = ({ selectedOrder, setShowViewModal }) => {
   if (!selectedOrder) return null;
 
-  // Calculate order total
-  const orderTotal = selectedOrder.items.reduce(
-    (total, item) => total + (item.price * item.quantity),
+  // Normalize core fields to support both detailed and summary shapes
+  const orderId = selectedOrder._id || selectedOrder.id || selectedOrder.orderId || "";
+  const orderDate = selectedOrder.createdAt || selectedOrder.date || new Date().toISOString();
+  const orderStatus = selectedOrder.status || selectedOrder.statusText || "N/A";
+  const orderPaymentMethod = selectedOrder.paymentMethod || selectedOrder.paymentMethodName || "N/A";
+
+  const items = Array.isArray(selectedOrder.items)
+    ? selectedOrder.items
+    : Array.isArray(selectedOrder.orderItems)
+    ? selectedOrder.orderItems.map((it) => ({
+        name: it.productName || it.name || "Item",
+        quantity: it.quantity || 0,
+        size: it.size || "N/A",
+        price: it.price || 0,
+      }))
+    : [];
+
+  // Calculate order total (fallback to amount/total when items not present)
+  const computedItemsTotal = items.reduce(
+    (total, item) => total + (Number(item.price || 0) * Number(item.quantity || 0)),
     0
   );
+  const orderTotal = Number(
+    computedItemsTotal || selectedOrder.total || selectedOrder.amount || 0
+  );
+
+  // Normalize customer/address block
+  const customerName =
+    selectedOrder.customerName ||
+    `${selectedOrder.address?.firstName || ""} ${selectedOrder.address?.lastName || ""}`.trim() ||
+    "N/A";
+  const phone = selectedOrder.address?.phone || selectedOrder.customerPhone || "N/A";
+  const addressLine =
+    selectedOrder.address?.address ||
+    selectedOrder.address?.addressLine ||
+    selectedOrder.shippingAddress ||
+    "N/A";
+  const city = selectedOrder.address?.city || "";
+  const state = selectedOrder.address?.state || "";
+  const zipCode = selectedOrder.address?.zipCode || selectedOrder.address?.postalCode || "";
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -45,26 +80,26 @@ const ViewOrderModal = ({ selectedOrder, setShowViewModal }) => {
               <div className="bg-gray-50 p-4 rounded-md">
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Order ID:</span>
-                  <p className="font-medium">{selectedOrder._id}</p>
+                  <p className="font-medium">{orderId}</p>
                 </div>
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Date:</span>
                   <p className="font-medium">
-                    {new Date(selectedOrder.date).toLocaleString()}
+                    {new Date(orderDate).toLocaleString()}
                   </p>
                 </div>
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Status:</span>
-                  <p className="font-medium">{selectedOrder.status}</p>
+                  <p className="font-medium">{orderStatus}</p>
                 </div>
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Payment Method:</span>
-                  <p className="font-medium">{selectedOrder.paymentMethod}</p>
+                  <p className="font-medium">{orderPaymentMethod}</p>
                 </div>
                 <div>
                   <span className="text-gray-600 text-sm">Total Amount:</span>
                   <p className="font-medium">
-                    {currency} {orderTotal.toFixed(2)}
+                    {currency} {Number(orderTotal || 0).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -75,19 +110,22 @@ const ViewOrderModal = ({ selectedOrder, setShowViewModal }) => {
               <div className="bg-gray-50 p-4 rounded-md">
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Name:</span>
-                  <p className="font-medium">
-                    {selectedOrder.address.firstName} {selectedOrder.address.lastName}
-                  </p>
+                  <p className="font-medium">{customerName}</p>
                 </div>
                 <div className="mb-2">
                   <span className="text-gray-600 text-sm">Phone:</span>
-                  <p className="font-medium">{selectedOrder.address.phone}</p>
+                  <p className="font-medium">{phone}</p>
                 </div>
                 <div>
                   <span className="text-gray-600 text-sm">Address:</span>
                   <p className="font-medium">
-                    {selectedOrder.address.address}, {selectedOrder.address.city},{' '}
-                    {selectedOrder.address.state} {selectedOrder.address.zipCode}
+                    {addressLine}
+                    {(city || state || zipCode) && (
+                      <>
+                        {`, ${city}`}
+                        {state ? `, ${state}` : ""} {zipCode}
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -97,75 +135,81 @@ const ViewOrderModal = ({ selectedOrder, setShowViewModal }) => {
           <div>
             <h4 className="font-medium text-gray-800 mb-2">Order Items</h4>
             <div className="bg-gray-50 p-4 rounded-md">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Product
-                      </th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Size
-                      </th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Price
-                      </th>
-                      <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {selectedOrder.items.map((item, index) => (
-                      <tr key={index}>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {item.name}
-                          </div>
+              {items.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead>
+                      <tr>
+                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Product
+                        </th>
+                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Size
+                        </th>
+                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Quantity
+                        </th>
+                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Price
+                        </th>
+                        <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {items.map((item, index) => (
+                        <tr key={index}>
+                          <td className="py-2 px-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {item.name}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">
+                              {item.size || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">
+                              {item.quantity}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">
+                              {currency} {Number(item.price || 0).toFixed(2)}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {currency} {(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td
+                          colSpan="4"
+                          className="py-2 px-4 whitespace-nowrap text-right font-medium"
+                        >
+                          Total:
                         </td>
                         <td className="py-2 px-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">
-                            {item.size || 'N/A'}
-                          </div>
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">
-                            {item.quantity}
-                          </div>
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">
-                            {currency} {item.price?.toFixed(2)}
-                          </div>
-                        </td>
-                        <td className="py-2 px-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {currency} {(item.price * item.quantity).toFixed(2)}
+                          <div className="text-sm font-bold text-gray-900">
+                            {currency} {Number(orderTotal || 0).toFixed(2)}
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td
-                        colSpan="4"
-                        className="py-2 px-4 whitespace-nowrap text-right font-medium"
-                      >
-                        Total:
-                      </td>
-                      <td className="py-2 px-4 whitespace-nowrap">
-                        <div className="text-sm font-bold text-gray-900">
-                          {currency} {orderTotal.toFixed(2)}
-                        </div>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600">
+                  Items details not available for this order summary.
+                </div>
+              )}
             </div>
           </div>
 

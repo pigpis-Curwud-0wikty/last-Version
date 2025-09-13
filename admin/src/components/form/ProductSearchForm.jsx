@@ -7,8 +7,6 @@ const ProductSearchForm = ({
   handleSearch,
   subcategories,
   fitTypes,
-  colors,
-  sizes,
   loading,
 }) => {
   const {
@@ -19,10 +17,6 @@ const ProductSearchForm = ({
     minPrice,
     maxPrice,
     status,
-    color,
-    size,
-    minSize,
-    maxSize,
     inStock,
     onSale,
     sortBy,
@@ -130,49 +124,6 @@ const ProductSearchForm = ({
             { id: "deleted", name: "Deleted" },
           ]}
         />
-
-        <FormInput
-          label="Color"
-          type="select"
-          name="color"
-          value={color || ""}
-          onChange={handleInputChange}
-          options={[{ id: "", name: "All Colors" }, ...colors]}
-        />
-
-        <FormInput
-          label="Size"
-          type="select"
-          name="size"
-          value={size || ""}
-          onChange={handleInputChange}
-          options={[{ id: "", name: "All Sizes" }, ...sizes]}
-        />
-
-        <div className="flex gap-2">
-          <FormInput
-            label="Min Size"
-            type="number"
-            name="minSize"
-            value={minSize}
-            onChange={handleInputChange}
-            placeholder="Min"
-            min="0"
-            step="1"
-            className="w-full"
-          />
-          <FormInput
-            label="Max Size"
-            type="number"
-            name="maxSize"
-            value={maxSize}
-            onChange={handleInputChange}
-            placeholder="Max"
-            min="0"
-            step="1"
-            className="w-full"
-          />
-        </div>
 
         <FormInput
           label="Sort By"
@@ -285,13 +236,6 @@ const ProductSearchForm = ({
 
           <div className="md:col-span-3 flex justify-end mt-4">
             <button
-              type="submit"
-              disabled={loading}
-              className="bg-black text-white px-6 py-2 rounded disabled:opacity-50"
-            >
-              {loading ? "Searching..." : "Search"}
-            </button>
-            <button
               type="button"
               onClick={() => {
                 // Reset all search params
@@ -303,10 +247,6 @@ const ProductSearchForm = ({
                   minPrice: "",
                   maxPrice: "",
                   status: "",
-                  color: "",
-                  size: "",
-                  minSize: "",
-                  maxSize: "",
                   inStock: false,
                   onSale: false,
                   includeDeleted: false,

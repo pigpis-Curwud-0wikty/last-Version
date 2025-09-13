@@ -12,7 +12,7 @@ import TypeCollection from "../components/TypeCollection";
 import ReelBaggey from "../components/ReelBaggey";
 import TypeProduct from "../components/TypeProduct";
 import { useTranslation } from 'react-i18next';
-import SmallNavbar from "../components/SmallNavbar";
+import HeroBanner from "../components/HeroBanner";
 
 const Home = () => {
   const { t } = useTranslation();
@@ -70,7 +70,10 @@ const Home = () => {
         whileInView="visible"
         viewport={{ once: true, amount: 0.3 }}
         variants={itemVariants}>
-        <SmallNavbar />
+        {/* HeroBanner full width */}
+        <div className="w-screen relative left-1/2 right-1/2 -mx-[50vw]">
+          <HeroBanner />
+        </div>
       </motion.div>
       <motion.div
         initial="hidden"

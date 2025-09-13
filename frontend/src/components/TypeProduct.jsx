@@ -8,10 +8,10 @@ const TypeProduct = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
     // Example product IDs (replace with real IDs as needed)
-    const productId1 = 'aaace';
-    const productId2 = 'aaacd';
+    const productId1 = '15';
+    const productId2 = '14';
     return (
-        <div className='my-10 overflow-hidden px-4 sm:px-[5vw] md:px-[7vw] lg:px-[9vw]'>
+        <div className='my-10 overflow-hidden px-4 sm:px-[2vw] md:px-[2vw] lg:px-[3vw]'>
             <div className='grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-6'>
                 <div className='col-span-1 relative group bg-[#111111]'>
                     <img src={assets.baggey4} alt="winter collection" className='w-full h-full object-cover transition-transform duration-300' />

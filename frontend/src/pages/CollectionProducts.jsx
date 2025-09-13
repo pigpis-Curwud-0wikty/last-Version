@@ -66,6 +66,7 @@ const CollectionProducts = () => {
 
         // ---- Fetch products ----
         try {
+          console.log(`Fetching products for collection ${collectionId} from: ${backendUrl}/api/Collection/${collectionId}/products`);
           // Products: try unauthenticated first, then retry with auth on 401
           let productsResponse;
           try {
@@ -73,23 +74,42 @@ const CollectionProducts = () => {
               `${backendUrl}/api/Collection/${collectionId}/products`,
               { headers: baseHeaders }
             );
+            console.log("Products response (unauthenticated):", productsResponse.data);
           } catch (errFirst) {
+            console.log("Unauthenticated request failed:", errFirst.response?.status, errFirst.response?.data);
             if (errFirst.response && errFirst.response.status === 401 && authToken) {
+              console.log("Retrying with authentication...");
               productsResponse = await axios.get(
                 `${backendUrl}/api/Collection/${collectionId}/products`,
                 { headers: authHeaders }
               );
+              console.log("Products response (authenticated):", productsResponse.data);
             } else {
               throw errFirst;
             }
           }
 
+          console.log("Full products response structure:", productsResponse.data);
+          console.log("Response body data:", productsResponse.data?.responseBody?.data);
+
           if (productsResponse.data?.responseBody?.data) {
+            console.log("Setting products:", productsResponse.data.responseBody.data);
             setProducts(productsResponse.data.responseBody.data);
+          } else if (productsResponse.data?.data) {
+            // Alternative response structure
+            console.log("Using alternative data structure:", productsResponse.data.data);
+            setProducts(productsResponse.data.data);
+          } else if (Array.isArray(productsResponse.data)) {
+            // Direct array response
+            console.log("Using direct array response:", productsResponse.data);
+            setProducts(productsResponse.data);
           } else {
+            console.log("No products found in response, setting empty array");
             setProducts([]);
           }
         } catch (productErr) {
+          console.error("Product fetch error:", productErr);
+          console.error("Error response:", productErr.response?.data);
           if (productErr.response) {
             // Error from server with status
             if (productErr.response.status === 401) {
@@ -99,7 +119,7 @@ const CollectionProducts = () => {
             } else if (productErr.response.status === 404) {
               setError("Products not found for this collection.");
             } else {
-              setError("Failed to load products. Please try again later.");
+              setError(`Failed to load products (${productErr.response.status}): ${productErr.response.data?.message || 'Please try again later.'}`);
             }
           } else {
             // Network / unexpected error
@@ -131,6 +151,8 @@ const CollectionProducts = () => {
     }
   }, [collectionId, backendUrl, token]);
 
+  console.log("Current products state:", products);
+
   // Filter and sort products
   const filteredProducts = products
     .filter((product) => {
@@ -158,6 +180,7 @@ const CollectionProducts = () => {
       }
     });
 
+    console.log("Filtered products:", filteredProducts);
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -200,7 +223,7 @@ const CollectionProducts = () => {
   }
 
   return (
-    <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 mt-20">
       {/* Collection Header */}
       <div className="mb-8">
         <Title
@@ -377,18 +400,7 @@ const CollectionProducts = () => {
         >
           {filteredProducts.map((product) => (
             <motion.div key={product.id} variants={itemVariants}>
-              <ProductCard
-                id={product.id}
-                name={product.name}
-                price={product.price}
-                finalPrice={product.finalPrice}
-                image={
-                  product.images && product.images.length > 0
-                    ? product.images[0].url
-                    : null
-                }
-                discountPercentage={product.discountPrecentage}
-              />
+              <ProductCard product={product} />
             </motion.div>
           ))}
         </motion.div>
