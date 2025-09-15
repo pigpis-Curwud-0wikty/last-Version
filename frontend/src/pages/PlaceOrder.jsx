@@ -60,17 +60,10 @@ const PlaceOrder = () => {
   // Fetch payment methods from API
   const fetchPaymentMethods = async () => {
     try {
-      const response = await axios.get(`${backendUrl}/api/PaymentMethod`, {
-        params: {
-          isActive: true,
-          isDeleted: false,
-          page: 1,
-          pageSize: 50
-        }
-      });
+      const response = await axios.get(`${backendUrl}/api/Enums/PaymentMethods`);
       const methods = response.data.responseBody?.data || [];
       setPaymentMethods(methods);
-      
+
       // Auto-select first payment method
       if (methods.length > 0) {
         setSelectedPaymentMethod(methods[0].id);
@@ -106,7 +99,12 @@ const PlaceOrder = () => {
   useEffect(() => {
     fetchAddresses();
     fetchPaymentMethods();
-  }, []);
+
+    // Debug cart state on component mount
+    console.log("PlaceOrder mounted - Cart items:", cartItems);
+    console.log("PlaceOrder mounted - Cart count:", getCartCount());
+    console.log("PlaceOrder mounted - localStorage cart:", localStorage.getItem("cartItems"))
+  }, [cartItems, getCartCount]);
 
   const onChangeHandler = (e) => {
     const { name, type, checked, value } = e.target;
@@ -184,20 +182,24 @@ const PlaceOrder = () => {
 
     // Check if user has items in cart
     const cartCount = getCartCount();
+    console.log("Cart count:", cartCount);
+    console.log("Cart items:", cartItems);
+    console.log("Cart items keys:", Object.keys(cartItems));
+    console.log("Cart items values:", Object.values(cartItems));
+
     if (cartCount === 0) {
+      console.log("Cart is empty - showing error");
       toast.error("Your cart is empty. Please add items before placing an order.");
       setIsLoading(false);
       return;
     }
-    console.log("Cart count:", cartCount);
-    console.log("Cart items:", cartItems);
 
     setIsLoading(true);
     try {
       // Step 1: Create Order
       console.log("Selected address ID (raw):", selectedAddressId);
       console.log("Selected address ID type:", typeof selectedAddressId);
-      
+
       const orderData = {
         addressId: parseInt(selectedAddressId), // Ensure it's an integer
         notes: paymentNotes || "Order placed via website"
@@ -225,10 +227,10 @@ const PlaceOrder = () => {
       if (orderResponse.data.statuscode === 201 || orderResponse.data.statuscode === 200) {
         const orderData = orderResponse.data.responseBody?.data;
         const orderNumber = orderData?.order?.orderNumber;
-        
+
         console.log("Order created successfully. Order data:", orderData);
         console.log("Order number:", orderNumber);
-        
+
         if (!orderNumber) {
           console.error("Order number missing from response:", orderData);
           throw new Error("Order number not received from server");
@@ -240,7 +242,7 @@ const PlaceOrder = () => {
         const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod);
         console.log("Selected payment method:", selectedMethod);
         console.log("Selected payment method ID:", selectedPaymentMethod);
-        
+
         // Validate payment method against Enums API to get correct enum value
         let methodValue = NaN;
         try {
@@ -250,13 +252,13 @@ const PlaceOrder = () => {
           );
           const enumList = enumResp?.data?.responseBody?.data || [];
           console.log("Payment method enums:", enumList);
-          
+
           // Try to match by payment method name
           const selectedName = (selectedMethod?.paymentMethod || "").toString().toLowerCase();
           const enumMatch = enumList.find(
             (e) => (e.name || e.Name || "").toString().toLowerCase() === selectedName
           );
-          
+
           if (enumMatch) {
             methodValue = Number(enumMatch.id);
           } else {
@@ -271,7 +273,7 @@ const PlaceOrder = () => {
               methodValue = selNum;
             }
           }
-          
+
           if (!Number.isFinite(methodValue) || methodValue <= 0) {
             console.error("Could not resolve valid payment method.", {
               selectedPaymentMethod,
@@ -281,18 +283,18 @@ const PlaceOrder = () => {
             toast.error("Invalid payment method selected. Please try again.");
             return;
           }
-          
+
           console.log("Resolved payment method value:", methodValue, {
             selectedPaymentMethod,
             selectedMethod,
           });
-          
+
         } catch (error) {
           console.error("Error fetching payment method enums:", error);
           toast.error("Failed to validate payment method. Please try again.");
           return;
         }
-        
+
         // Step 2: Process Payment
         const paymentData = {
           orderNumber: orderNumber,
@@ -321,25 +323,22 @@ const PlaceOrder = () => {
 
         if (paymentResponse.data.statuscode === 200) {
           const paymentData = paymentResponse.data.responseBody?.data;
-          
+
           console.log("Payment successful. Payment data:", paymentData);
-          
-          // Clear cart on successful payment
-          setCartItems({});
-          
+
           if (paymentData?.isRedirectRequired && paymentData?.redirectUrl) {
             console.log("Redirecting to payment URL:", paymentData.redirectUrl);
             toast.success("Redirecting to payment gateway...");
-            
+
             // Store order info in localStorage for return handling
             localStorage.setItem('pendingOrderNumber', orderNumber);
             localStorage.setItem('paymentRedirectTime', Date.now().toString());
-            
+
             // Add return URL parameter if the payment gateway supports it
             const returnUrl = `${window.location.origin}/orders`;
             const separator = paymentData.redirectUrl.includes('?') ? '&' : '?';
             const redirectUrlWithReturn = `${paymentData.redirectUrl}${separator}return_url=${encodeURIComponent(returnUrl)}`;
-            
+
             window.location.href = redirectUrlWithReturn;
           } else {
             console.log("Payment completed without redirect");
@@ -357,7 +356,7 @@ const PlaceOrder = () => {
     } catch (error) {
       console.error("Error placing order:", error.response?.data || error.message);
       console.error("Full error object:", error);
-      
+
       if (error.response?.status === 403) {
         toast.error("Authentication failed. Please login again.");
       } else if (error.response?.status === 400) {
@@ -521,8 +520,7 @@ const PlaceOrder = () => {
               {paymentMethods.map((method) => (
                 <div
                   key={method.id}
-                  className={`border rounded-md p-3 cursor-pointer transition-colors ${
-                    selectedPaymentMethod === method.id
+                  className={`border rounded-md p-3 cursor-pointer transition-colors ${selectedPaymentMethod === method.id
                       ? "border-green-500 bg-green-50"
                       : "border-gray-300 hover:border-gray-400"
                     }`}
@@ -534,8 +532,7 @@ const PlaceOrder = () => {
                     <p className="font-medium">{method.name}</p>
                     <p className="text-sm text-gray-500">{method.paymentMethod}</p>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border-2 ${
-                    selectedPaymentMethod === method.id
+                  <div className={`w-4 h-4 rounded-full border-2 ${selectedPaymentMethod === method.id
                       ? "border-green-500 bg-green-500"
                       : "border-gray-300"
                     }`}>
@@ -546,7 +543,7 @@ const PlaceOrder = () => {
                 </div>
               ))}
             </div>
-            
+
             {/* Wallet Phone Number (if needed) */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -560,7 +557,7 @@ const PlaceOrder = () => {
                 placeholder="Enter wallet phone number"
               />
             </div>
-            
+
             {/* Payment Notes */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">

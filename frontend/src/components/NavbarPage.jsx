@@ -6,13 +6,17 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 
 const NavbarPage = () => {
+  const { backendUrl } = useContext(ShopContext);
   const [visible, setvisible] = useState(false);
   const navigate = useNavigate();
   const context = useContext(ShopContext);
-  const { backendUrl } = useContext(ShopContext);
   const setShowSearch = context?.setShowSearch;
   const getCartCount = context?.getCartCount;
+  const [scrolled, setScrolled] = useState(false);
   const { t, i18n } = useTranslation();
+  const [hovered, setHovered] = useState(false);
+  const [hoveredCategoryId, setHoveredCategoryId] = useState(null);
+
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem("user");
     return stored ? JSON.parse(stored) : null;
@@ -23,6 +27,11 @@ const NavbarPage = () => {
   const profileRef = useRef(null);
 
   useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 10);
+    };
+    window.addEventListener("scroll", handleScroll);
+
     // 🔹 إغلاق القائمة عند الضغط برّه
     const handleClickOutside = (event) => {
       if (profileRef.current && !profileRef.current.contains(event.target)) {
@@ -32,6 +41,7 @@ const NavbarPage = () => {
     document.addEventListener("mousedown", handleClickOutside);
 
     return () => {
+      window.removeEventListener("scroll", handleScroll);
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -45,7 +55,12 @@ const NavbarPage = () => {
     navigate("/login");
   };
 
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === "en" ? "ar" : "en");
+  };
+
   const [categories, setCategories] = useState([]);
+  const [categorySubcategories, setCategorySubcategories] = useState({});
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -57,35 +72,8 @@ const NavbarPage = () => {
 
         // Get categories from responseBody
         if (Array.isArray(data.responseBody?.data)) {
-          // For each category, fetch its subcategories
-          const categoriesWithSubcategories = await Promise.all(
-            data.responseBody.data.map(async (category) => {
-              try {
-                const subRes = await fetch(
-                  `${backendUrl}/api/subcategories?categoryId=${category.id}&isActive=true&isDeleted=false&page=1&pageSize=50`
-                );
-                const subData = await subRes.json();
-
-                // Add subcategories to the category object
-                if (Array.isArray(subData.responseBody?.data)) {
-                  return {
-                    ...category,
-                    subcategories: subData.responseBody.data,
-                  };
-                }
-                return { ...category, subcategories: [] };
-              } catch (err) {
-                console.error(
-                  `Error fetching subcategories for category ${category.id}:`,
-                  err
-                );
-                return { ...category, subcategories: [] };
-              }
-            })
-          );
-
-          setCategories(categoriesWithSubcategories);
-          console.log("Categories with subcategories:", categoriesWithSubcategories);
+          // Set categories directly from API response
+          setCategories(data.responseBody.data);
         } else {
           setCategories([]); // fallback to prevent errors
         }
@@ -96,9 +84,39 @@ const NavbarPage = () => {
     };
     fetchCategories();
   }, [backendUrl]);
-  const toggleLanguage = () => {
-    i18n.changeLanguage(i18n.language === "en" ? "ar" : "en");
-  };
+
+  useEffect(() => {
+    const fetchCategoriesWithSubcategories = async () => {
+      try {
+        const promises = categories.map(async (category) => {
+          const categoryRes = await fetch(
+            `${backendUrl}/api/categories/${category.id}?isActive=true&includeDeleted=false`
+          );
+          const categoryData = await categoryRes.json();
+
+          // Get subcategories from category detail response
+          if (categoryData.responseBody?.data?.subCategories) {
+            return {
+              [category.id]: categoryData.responseBody.data.subCategories.filter(sub => sub.isActive),
+            };
+          }
+          return { [category.id]: [] };
+        });
+
+        const subcategories = await Promise.all(promises);
+        const mergedSubcategories = subcategories.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+        setCategorySubcategories(mergedSubcategories);
+      } catch (err) {
+        console.error("Error fetching categories with subcategories:", err);
+        setCategorySubcategories({});
+      }
+    };
+
+    if (categories.length > 0) {
+      fetchCategoriesWithSubcategories();
+    }
+  }, [categories, backendUrl]);
 
   const navbarVariants = {
     hidden: { y: -100, opacity: 0 },
@@ -135,63 +153,64 @@ const NavbarPage = () => {
           <p>{t("HOME")}</p>
           <span className="w-2/4 h-[2px] transition-all duration-300 bg-gray-700 group-hover:w-full group-hover:bg-gray-300 group-hover:opacity-100 opacity-0"></span>
         </NavLink>
-        <div className="relative group">
-          <NavLink
-            to="/collection"
-            className="flex items-center gap-1 focus:outline-none"
-          >
-            SHOP <span className="ml-1">&#9662;</span>
-          </NavLink>
+<div className="relative group">
+            <NavLink
+              to="/collection"
+              className="flex items-center gap-1 focus:outline-none"
+            >
+              SHOP <span className="ml-1">&#9662;</span>
+            </NavLink>
 
-          {/* Menu */}
-          <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-64 bg-white shadow-lg rounded-lg z-50 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-200">
-            <ul className="flex flex-col py-2">
-              {Array.isArray(categories) && categories.length > 0 ? (
-                categories.filter(cat => cat.isActive !== false).map((cat) => (
-                  <li key={cat.id} className="relative group/subcategory hover:bg-gray-50" onMouseEnter={() => console.log(`Hovering category: ${cat.name}, subcategories:`, cat.subcategories)}>
-                    <Link
-                      to={`/category/${cat.id}`}
-                      className="block px-6 py-3 cursor-pointer text-gray-700 font-medium transition-colors duration-200 hover:text-gray-900"
+            {/* Menu */}
+            <div className="absolute left-1/2 -translate-x-1/3 mt-2 w-80 bg-white shadow-lg z-[100] opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-200">
+              <ul className="flex flex-col py-2">
+                {Array.isArray(categories) && categories.length > 0 ? (
+                  categories.map((cat) => (
+                    <li
+                      key={cat.id}
+                      className="relative"
+                      onMouseEnter={() => setHoveredCategoryId(cat.id)}
+                      onMouseLeave={() => setHoveredCategoryId(null)}
                     >
-                      <div className="flex justify-between items-center">
-                        <span>{cat.name}</span>
-                        {Array.isArray(cat.subcategories) &&
-                          cat.subcategories.filter(sub => sub.isActive !== false).length > 0 && (
-                            <span className="text-gray-400 transition-transform duration-200 group-hover/subcategory:translate-x-1">›</span>
-                          )}
-                      </div>
-                    </Link>
+                      <Link
+                        to={`/category/${cat.id}`}
+                        className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 font-medium transition-colors duration-150"
+                      >
+                        <div className="flex justify-between items-center">
+                          <span>{cat.name}</span>
+                        </div>
+                      </Link>
 
-                    {/* Subcategories - Only for THIS specific category */}
-                    {Array.isArray(cat.subcategories) &&
-                      cat.subcategories.filter(sub => sub.isActive !== false).length > 0 && (
-                        <ul className="absolute left-full top-0 w-64 bg-white shadow-lg rounded-lg opacity-0 invisible group-hover/subcategory:opacity-100 group-hover/subcategory:visible transition-all duration-300 z-50 transform translate-x-2 group-hover/subcategory:translate-x-0 border border-gray-200">
-                          <li className="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-semibold border-b">
-                            {cat.name} Subcategories
-                          </li>
-                          {cat.subcategories.filter(sub => sub.isActive !== false).map((sub) => (
-                            <li key={sub.id}>
-                              <Link
-                                to={`/subcategory/${sub.id}`}
-                                className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 transition-colors duration-200 hover:text-gray-900 hover:pl-8"
-                                onMouseEnter={() => console.log(`Hovering subcategory: ${sub.name} (belongs to ${cat.name})`)}
-                              >
-                                {sub.name}
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      {/* Subcategories */}
+                      {Array.isArray(categorySubcategories[cat.id]) &&
+                        categorySubcategories[cat.id].length > 0 && (
+                          <ul
+                            className={`absolute left-full top-0 w-64 bg-white shadow-lg transition-all duration-200 z-50 ${
+                              hoveredCategoryId === cat.id ? "opacity-100 visible" : "opacity-0 invisible"
+                            }`}
+                          >
+                            {categorySubcategories[cat.id].map((sub) => (
+                              <li key={sub.id}>
+                                <Link
+                                  to={`/subcategory/${sub.id}`}
+                                  className="block px-6 py-3 hover:bg-gray-100 cursor-pointer text-gray-700 transition-colors duration-150"
+                                >
+                                  {sub.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                    </li>
+                  ))
+                ) : (
+                  <li className="px-6 py-3 text-gray-500">
+                    No categories available
                   </li>
-                ))
-              ) : (
-                <li className="px-6 py-3 text-gray-500">
-                  No categories available
-                </li>
-              )}
-            </ul>
+                )}
+              </ul>
+            </div>
           </div>
-        </div>
         <NavLink
           to="/policy"
           className={({ isActive }) =>

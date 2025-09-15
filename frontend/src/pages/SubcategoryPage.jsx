@@ -27,24 +27,16 @@ const SubcategoryPage = () => {
 
         // جلب بيانات الـ Subcategory
         const subcategoryResponse = await fetch(
-          `${backendUrl}/api/subcategories/${subcategoryId}`
+          `${backendUrl}/api/subcategories/${subcategoryId}?isActive=true&isDeleted=false`
         );
         const subcategoryData = await subcategoryResponse.json();
 
         if (subcategoryResponse.ok && subcategoryData.responseBody) {
           setSubcategory(subcategoryData.responseBody.data);
 
-          // جلب المنتجات
-          const productsResponse = await fetch(
-            `${backendUrl}/api/products?subCategoryId=${subcategoryId}&isActive=true&includeDeleted=false&page=1&pageSize=50`
-          );
-          const productsData = await productsResponse.json();
-
-          if (
-            productsResponse.ok &&
-            Array.isArray(productsData.responseBody?.data)
-          ) {
-            setProducts(productsData.responseBody.data);
+          // Get products from subcategory response
+          if (subcategoryData.responseBody.data.products) {
+            setProducts(subcategoryData.responseBody.data.products.filter(product => product.isActive));
           } else {
             setProducts([]);
           }

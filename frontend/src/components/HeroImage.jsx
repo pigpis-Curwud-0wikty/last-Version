@@ -15,7 +15,7 @@ import axios from "axios";
 // Default slider images as fallback
 const defaultSliderImages = [assets.hero_img2, assets.hero_img3];
 
-const HeroImage = () => {
+const HeroImage = ({height}) => {
   const { t } = useTranslation();
   const { backendUrl } = useContext(ShopContext);
   const swiperRef = useRef();
@@ -82,7 +82,7 @@ const HeroImage = () => {
   }
 
   return (
-    <section className="relative w-full h-[100vh] overflow-hidden m-0 p-0">
+    <section className={`relative w-full h-[${height}vh] overflow-hidden m-0 p-0`}>
       {/* Collection indicator dots
       {collections.length > 1 && (
         <div className="absolute top-4 right-4 z-20 flex space-x-2">

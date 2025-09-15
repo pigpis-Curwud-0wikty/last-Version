@@ -98,7 +98,7 @@ const ReelBaggey = () => {
                             <Title text1={t('REEL')} text2={t('BAGGEY_COLLECTION')} />
                         </h1>
                         <p className="text-gray-600 max-w-3xl">
-                            <p>{t('BAGGIEST_DENIM')}</p>
+                            {t('BAGGIEST_DENIM')}
                         </p>
                     </div>
 

@@ -1129,7 +1129,7 @@ const Product = () => {
 
       {/* HeroBanner full width */}
       <div className="w-screen relative left-1/2 right-1/2 -mx-[50vw]">
-        <HeroBanner />
+        <HeroBanner collectionId={8}/>
       </div>
 
       {/* Related Products */}

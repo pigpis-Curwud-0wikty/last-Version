@@ -61,6 +61,7 @@ const Navbar = () => {
   };
 
   const [categories, setCategories] = useState([]);
+  const [categorySubcategories, setCategorySubcategories] = useState({});
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -72,34 +73,8 @@ const Navbar = () => {
 
         // Get categories from responseBody
         if (Array.isArray(data.responseBody?.data)) {
-          // For each category, fetch its subcategories
-          const categoriesWithSubcategories = await Promise.all(
-            data.responseBody.data.map(async (category) => {
-              try {
-                const subRes = await fetch(
-                  `${backendUrl}/api/subcategories?categoryId=${category.id}&isActive=true&isDeleted=false&page=1&pageSize=50`
-                );
-                const subData = await subRes.json();
-
-                // Add subcategories to the category object
-                if (Array.isArray(subData.responseBody?.data)) {
-                  return {
-                    ...category,
-                    subcategories: subData.responseBody.data,
-                  };
-                }
-                return { ...category, subcategories: [] };
-              } catch (err) {
-                console.error(
-                  `Error fetching subcategories for category ${category.id}:`,
-                  err
-                );
-                return { ...category, subcategories: [] };
-              }
-            })
-          );
-
-          setCategories(categoriesWithSubcategories);
+          // Set categories directly from API response
+          setCategories(data.responseBody.data);
         } else {
           setCategories([]); // fallback to prevent errors
         }
@@ -110,6 +85,39 @@ const Navbar = () => {
     };
     fetchCategories();
   }, [backendUrl]);
+
+  useEffect(() => {
+    const fetchCategoriesWithSubcategories = async () => {
+      try {
+        const promises = categories.map(async (category) => {
+          const categoryRes = await fetch(
+            `${backendUrl}/api/categories/${category.id}?isActive=true&includeDeleted=false`
+          );
+          const categoryData = await categoryRes.json();
+
+          // Get subcategories from category detail response
+          if (categoryData.responseBody?.data?.subCategories) {
+            return {
+              [category.id]: categoryData.responseBody.data.subCategories.filter(sub => sub.isActive),
+            };
+          }
+          return { [category.id]: [] };
+        });
+
+        const subcategories = await Promise.all(promises);
+        const mergedSubcategories = subcategories.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+        setCategorySubcategories(mergedSubcategories);
+      } catch (err) {
+        console.error("Error fetching categories with subcategories:", err);
+        setCategorySubcategories({});
+      }
+    };
+
+    if (categories.length > 0) {
+      fetchCategoriesWithSubcategories();
+    }
+  }, [categories, backendUrl]);
 
   const navbarVariants = {
     hidden: { y: -100, opacity: 0 },
@@ -187,22 +195,18 @@ const Navbar = () => {
                       >
                         <div className="flex justify-between items-center">
                           <span>{cat.name}</span>
-                          {Array.isArray(cat.subcategories) &&
-                            cat.subcategories.length > 0 && (
-                              <span className="text-gray-400">›</span>
-                            )}
                         </div>
                       </Link>
 
                       {/* Subcategories */}
-                      {Array.isArray(cat.subcategories) &&
-                        cat.subcategories.length > 0 && (
+                      {Array.isArray(categorySubcategories[cat.id]) &&
+                        categorySubcategories[cat.id].length > 0 && (
                           <ul
                             className={`absolute left-full top-0 w-64 bg-white shadow-lg transition-all duration-200 z-50 ${
                               hoveredCategoryId === cat.id ? "opacity-100 visible" : "opacity-0 invisible"
                             }`}
                           >
-                            {cat.subcategories.map((sub) => (
+                            {categorySubcategories[cat.id].map((sub) => (
                               <li key={sub.id}>
                                 <Link
                                   to={`/subcategory/${sub.id}`}

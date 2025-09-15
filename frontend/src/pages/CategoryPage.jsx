@@ -26,23 +26,18 @@ const CategoryPage = () => {
 
         // Fetch category details
         const response = await fetch(
-          `${backendUrl}/api/categories/${categoryId}`
+          `${backendUrl}/api/categories/${categoryId}?isActive=true&includeDeleted=false`
         );
         const data = await response.json();
 
         if (response.ok && data.responseBody) {
           setCategory(data.responseBody.data);
 
-          // Fetch subcategories separately
-          const subRes = await fetch(
-            `${backendUrl}/api/subcategories?categoryId=${categoryId}&isActive=true&includeDeleted=false&page=1&pageSize=50`
-          );
-          const subData = await subRes.json();
-
-          if (subRes.ok && subData.responseBody?.data) {
-            setSubcategories(subData.responseBody.data);
+          // Get subcategories from category response
+          if (data.responseBody.data.subCategories) {
+            setSubcategories(data.responseBody.data.subCategories.filter(sub => sub.isActive));
           } else {
-            setError(subData.message || "Failed to load subcategories");
+            setSubcategories([]);
           }
         } else {
           setError(data.message || "Failed to load category");

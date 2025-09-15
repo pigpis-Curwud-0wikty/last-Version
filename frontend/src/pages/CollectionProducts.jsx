@@ -2,11 +2,11 @@ import React, { useState, useEffect, useContext } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ShopContext } from "../context/ShopContext";
 import { motion } from "framer-motion";
-import Title from "../components/Title";
 import ProductCard from "../components/ProductCard";
 import { FaChevronDown, FaTimes } from "react-icons/fa";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
+import HeroImage from "../components/HeroImage";
 
 const CollectionProducts = () => {
   const { t } = useTranslation();
@@ -180,7 +180,7 @@ const CollectionProducts = () => {
       }
     });
 
-    console.log("Filtered products:", filteredProducts);
+  console.log("Filtered products:", filteredProducts);
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -223,199 +223,203 @@ const CollectionProducts = () => {
   }
 
   return (
-    <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 mt-20">
-      {/* Collection Header */}
-      <div className="mb-8">
-        <Title
-          text1={collection?.name || t("COLLECTION")}
-          text2={t("PRODUCTS")}
-        />
-        <p className="mt-2 text-gray-600">
-          {collection?.description || t("COLLECTION_DESCRIPTION")}
-        </p>
-      </div>
+    <>
+      <HeroImage height={60}/>
+      <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+        {/* Collection Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold tracking-wide my-5 uppercase">
+            {collection?.name}
+          </h1>
+          <p className="text-gray-600 max-w-3xl mx-auto">
+            {collection?.description ||
+              "Explore our collection of products in this subcategory."}
+          </p>
+        </div>
 
-      {/* Filter and Sort Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowFilterPanel(!showFilterPanel)}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            <span>{t("FILTER")}</span>
-            <FaChevronDown
-              className={`transition-transform ${showFilterPanel ? "rotate-180" : ""}`}
-            />
-          </button>
 
-          <div className="relative">
+        {/* Filter and Sort Controls */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center my-6 gap-4">
+          <div className="flex items-center gap-4">
             <button
-              onClick={() => setShowSortDropdown(!showSortDropdown)}
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
               className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
             >
-              <span>{t("SORT_BY")}</span>
+              <span>{t("FILTER")}</span>
               <FaChevronDown
-                className={`transition-transform ${showSortDropdown ? "rotate-180" : ""}`}
+                className={`transition-transform ${showFilterPanel ? "rotate-180" : ""}`}
               />
             </button>
 
-            {showSortDropdown && (
-              <div className="absolute z-10 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg">
-                <ul className="py-1">
-                  <li
-                    className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "featured" ? "bg-gray-100" : ""}`}
-                    onClick={() => {
-                      setSortOption("featured");
-                      setShowSortDropdown(false);
-                    }}
-                  >
-                    {t("FEATURED")}
-                  </li>
-                  <li
-                    className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "price-low-high" ? "bg-gray-100" : ""}`}
-                    onClick={() => {
-                      setSortOption("price-low-high");
-                      setShowSortDropdown(false);
-                    }}
-                  >
-                    {t("PRICE_LOW_TO_HIGH")}
-                  </li>
-                  <li
-                    className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "price-high-low" ? "bg-gray-100" : ""}`}
-                    onClick={() => {
-                      setSortOption("price-high-low");
-                      setShowSortDropdown(false);
-                    }}
-                  >
-                    {t("PRICE_HIGH_TO_LOW")}
-                  </li>
-                  <li
-                    className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "newest" ? "bg-gray-100" : ""}`}
-                    onClick={() => {
-                      setSortOption("newest");
-                      setShowSortDropdown(false);
-                    }}
-                  >
-                    {t("NEWEST")}
-                  </li>
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="text-sm text-gray-500">
-          {filteredProducts.length} {t("PRODUCTS_FOUND")}
-        </div>
-      </div>
-
-      {/* Filter Panel */}
-      {showFilterPanel && (
-        <div className="mb-8 p-4 border border-gray-200 rounded-md bg-gray-50">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-medium">{t("FILTER_OPTIONS")}</h3>
-            <button
-              onClick={() => setShowFilterPanel(false)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <FaTimes />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Price Range Filter */}
-            <div>
-              <h4 className="font-medium mb-2">{t("PRICE_RANGE")}</h4>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={priceRange.min}
-                  onChange={(e) =>
-                    setPriceRange({
-                      ...priceRange,
-                      min: Number(e.target.value),
-                    })
-                  }
-                  className="w-24 p-2 border border-gray-300 rounded-md"
+            <div className="relative">
+              <button
+                onClick={() => setShowSortDropdown(!showSortDropdown)}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                <span>{t("SORT_BY")}</span>
+                <FaChevronDown
+                  className={`transition-transform ${showSortDropdown ? "rotate-180" : ""}`}
                 />
-                <span>-</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={priceRange.max}
-                  onChange={(e) =>
-                    setPriceRange({
-                      ...priceRange,
-                      max: Number(e.target.value),
-                    })
-                  }
-                  className="w-24 p-2 border border-gray-300 rounded-md"
-                />
-              </div>
-            </div>
+              </button>
 
-            {/* In Stock Filter */}
-            <div>
-              <h4 className="font-medium mb-2">{t("AVAILABILITY")}</h4>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={inStock}
-                  onChange={() => setInStock(!inStock)}
-                  className="h-5 w-5 text-blue-600"
-                />
-                <span>{t("IN_STOCK_ONLY")}</span>
-              </label>
+              {showSortDropdown && (
+                <div className="absolute z-10 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg">
+                  <ul className="py-1">
+                    <li
+                      className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "featured" ? "bg-gray-100" : ""}`}
+                      onClick={() => {
+                        setSortOption("featured");
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      {t("FEATURED")}
+                    </li>
+                    <li
+                      className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "price-low-high" ? "bg-gray-100" : ""}`}
+                      onClick={() => {
+                        setSortOption("price-low-high");
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      {t("PRICE_LOW_TO_HIGH")}
+                    </li>
+                    <li
+                      className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "price-high-low" ? "bg-gray-100" : ""}`}
+                      onClick={() => {
+                        setSortOption("price-high-low");
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      {t("PRICE_HIGH_TO_LOW")}
+                    </li>
+                    <li
+                      className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${sortOption === "newest" ? "bg-gray-100" : ""}`}
+                      onClick={() => {
+                        setSortOption("newest");
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      {t("NEWEST")}
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => {
-                setPriceRange({ min: 0, max: 10000 });
-                setInStock(false);
-              }}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 mr-2"
-            >
-              {t("RESET")}
-            </button>
-            <button
-              onClick={() => setShowFilterPanel(false)}
-              className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800"
-            >
-              {t("APPLY")}
-            </button>
+          <div className="text-sm text-gray-500">
+            {filteredProducts.length} {t("PRODUCTS_FOUND")}
           </div>
         </div>
-      )}
 
-      {/* Products Grid */}
-      {filteredProducts.length > 0 ? (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
-        >
-          {filteredProducts.map((product) => (
-            <motion.div key={product.id} variants={itemVariants}>
-              <ProductCard product={product} />
-            </motion.div>
-          ))}
-        </motion.div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-xl text-gray-500">{t("NO_PRODUCTS_FOUND")}</p>
-          <Link
-            to="/"
-            className="mt-4 inline-block text-blue-600 hover:underline"
+        {/* Filter Panel */}
+        {showFilterPanel && (
+          <div className="mb-8 p-4 border border-gray-200 rounded-md bg-gray-50">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-medium">{t("FILTER_OPTIONS")}</h3>
+              <button
+                onClick={() => setShowFilterPanel(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Price Range Filter */}
+              <div>
+                <h4 className="font-medium mb-2">{t("PRICE_RANGE")}</h4>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={priceRange.min}
+                    onChange={(e) =>
+                      setPriceRange({
+                        ...priceRange,
+                        min: Number(e.target.value),
+                      })
+                    }
+                    className="w-24 p-2 border border-gray-300 rounded-md"
+                  />
+                  <span>-</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={priceRange.max}
+                    onChange={(e) =>
+                      setPriceRange({
+                        ...priceRange,
+                        max: Number(e.target.value),
+                      })
+                    }
+                    className="w-24 p-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              {/* In Stock Filter */}
+              <div>
+                <h4 className="font-medium mb-2">{t("AVAILABILITY")}</h4>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inStock}
+                    onChange={() => setInStock(!inStock)}
+                    className="h-5 w-5 text-blue-600"
+                  />
+                  <span>{t("IN_STOCK_ONLY")}</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setPriceRange({ min: 0, max: 10000 });
+                  setInStock(false);
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 mr-2"
+              >
+                {t("RESET")}
+              </button>
+              <button
+                onClick={() => setShowFilterPanel(false)}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800"
+              >
+                {t("APPLY")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Products Grid */}
+        {filteredProducts.length > 0 ? (
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
           >
-            {t("CONTINUE_SHOPPING")}
-          </Link>
-        </div>
-      )}
-    </div>
+            {filteredProducts.map((product) => (
+              <motion.div key={product.id} variants={itemVariants}>
+                <ProductCard product={product} />
+              </motion.div>
+            ))}
+          </motion.div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-xl text-gray-500">{t("NO_PRODUCTS_FOUND")}</p>
+            <Link
+              to="/"
+              className="mt-4 inline-block text-blue-600 hover:underline"
+            >
+              {t("CONTINUE_SHOPPING")}
+            </Link>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 

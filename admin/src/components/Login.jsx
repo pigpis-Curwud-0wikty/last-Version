@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { backendUrl } from "../App";
 
 const Login = ({ setToken }) => {
   const [email, setEmail] = useState("");
@@ -11,7 +12,7 @@ const Login = ({ setToken }) => {
 
     try {
       const response = await axios.post(
-        `https://e-commerce-api-v1-p515.onrender.com/api/Account/login`,
+        `${backendUrl}/api/Account/login`,
         { email, password }
       );
 

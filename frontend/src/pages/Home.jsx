@@ -28,7 +28,7 @@ const Home = () => {
         whileInView="visible"
         viewport={{ once: true, amount: 0.3 }}
         variants={itemVariants}>
-        <HeroImage />
+        <HeroImage height={100}/>
       </motion.div>
       <motion.div
         initial="hidden"
@@ -72,7 +72,7 @@ const Home = () => {
         variants={itemVariants}>
         {/* HeroBanner full width */}
         <div className="w-screen relative left-1/2 right-1/2 -mx-[50vw]">
-          <HeroBanner />
+          <HeroBanner collectionId={6} />
         </div>
       </motion.div>
       <motion.div

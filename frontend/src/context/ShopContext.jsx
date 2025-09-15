@@ -9,10 +9,13 @@ export const ShopContext = createContext();
 const ShopContextProvider = (props) => {
   const currency = "$";
   const delivery_fee = 10;
-  const backendUrl = "https://e-commerce-api-v1-p515.onrender.com";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  const [cartItems, setCartItems] = useState({});
+  const [cartItems, setCartItems] = useState(() => {
+    const storedCart = localStorage.getItem("cartItems");
+    return storedCart ? JSON.parse(storedCart) : {};
+  });
   const [products, setProducts] = useState([]);
   const [token, setToken] = useState(() => {
     const storedToken = localStorage.getItem("token");
@@ -311,6 +314,13 @@ const ShopContextProvider = (props) => {
         const data = await res.json();
         // Transform Fashion-main cart into local cartItems shape
         const items = data?.responseBody?.data?.items || [];
+
+        // If backend cart is empty but we have local cart items, don't overwrite
+        if (items.length === 0 && Object.keys(cartItems).length > 0) {
+          console.log("Backend cart is empty but local cart has items, keeping local cart");
+          return;
+        }
+
         const mapped = {};
         for (const it of items) {
           const pid = String(it.productId || it.product?.id);
@@ -320,6 +330,7 @@ const ShopContextProvider = (props) => {
           if (!mapped[pid]) mapped[pid] = {};
           mapped[pid][String(sizeLabel)] = it.quantity || 1;
         }
+        console.log("Setting cart items from backend:", mapped);
         setCartItems(mapped);
       } catch (error) {
         console.log("Error fetching cart:", error.message);
@@ -412,10 +423,40 @@ const ShopContextProvider = (props) => {
     getProducts();
   }, []);
 
-  // Fetch cart data whenever token changes (user logs in)
   useEffect(() => {
-    fetchUserCart();
+    const syncCartFromLocalStorage = () => {
+      try {
+        const storedCart = localStorage.getItem("cartItems");
+        if (storedCart) {
+          const parsedCart = JSON.parse(storedCart);
+          if (JSON.stringify(parsedCart) !== JSON.stringify(cartItems)) {
+            console.log("Syncing cart from localStorage:", parsedCart);
+            setCartItems(parsedCart);
+          }
+        }
+      } catch (error) {
+        console.error("Error syncing cart from localStorage:", error);
+      } 
+    };
+
+    // Check for sync on component mount and periodically
+    syncCartFromLocalStorage();
+    const interval = setInterval(syncCartFromLocalStorage, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    console.log("Token changed - fetchUserCart disabled to preserve cart");
   }, [token]);
+
+  useEffect(() => {
+    console.log("Saving cart to localStorage:", cartItems);
+    // Only save to localStorage if cartItems is not empty or if we're explicitly clearing it
+    if (Object.keys(cartItems).length > 0 || cartItems === null) {
+      localStorage.setItem("cartItems", JSON.stringify(cartItems));
+    }
+  }, [cartItems]);
 
   const value = {
     products,
@@ -432,7 +473,7 @@ const ShopContextProvider = (props) => {
     updataQuantity,
     getCartAmount,
     clearCart,
-    checkout, // ✅ New checkout function
+    checkout, // 
     navigate,
     backendUrl,
     getProducts,
